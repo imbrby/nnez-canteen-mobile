@@ -17,8 +17,11 @@ class CampusApiClient {
     required String plainPassword,
     required String startDate,
     required String endDate,
+    bool includeTransactions = true,
+    void Function(String message)? onProgress,
   }) async {
     try {
+      onProgress?.call('正在建立会话...');
       final cookieJar = CookieJar();
       final dio = Dio(
         BaseOptions(
@@ -50,6 +53,7 @@ class CampusApiClient {
         throw Exception('未获取到 ASP.NET_SessionId，会话初始化失败。');
       }
 
+      onProgress?.call('正在初始化验证码会话...');
       await _waitRandom(280, 760);
 
       await _postForm(dio, '/interface/index', <String, String>{
@@ -69,6 +73,7 @@ class CampusApiClient {
         throw Exception('验证码会话初始化失败 (${verifyResp.statusCode ?? 0})');
       }
 
+      onProgress?.call('正在登录账号...');
       final encodedPassword = base64Encode(utf8.encode(plainPassword));
 
       final loginResp = await _postForm(
@@ -90,30 +95,39 @@ class CampusApiClient {
         throw Exception('登录失败：${_extractMessage(loginJson)}');
       }
 
-      await _waitRandom(600, 1500);
-
-      final recordsResp =
-          await _postForm(dio, '/interface/index', <String, String>{
-            'method': 'getecardxfmx',
-            'stuid': '1',
-            'carno': sid,
-            'starttime': startDate,
-            'endtime': endDate,
-          }, refererPath: '/mobile/yktxfjl');
-      final recordsJson = _decodeJson(recordsResp.data);
-      if (recordsResp.statusCode != 200) {
-        throw Exception('查询流水失败 (${recordsResp.statusCode ?? 0})');
-      }
-      final rawData = recordsJson['data'];
-      if (!_isSuccess(recordsJson) || rawData is! List) {
-        throw Exception('查询流水失败：${_extractMessage(recordsJson)}');
+      List<dynamic> rawData = <dynamic>[];
+      if (includeTransactions) {
+        onProgress?.call('正在拉取消费流水...');
+        await _waitRandom(600, 1500);
+        final recordsResp =
+            await _postForm(dio, '/interface/index', <String, String>{
+              'method': 'getecardxfmx',
+              'stuid': '1',
+              'carno': sid,
+              'starttime': startDate,
+              'endtime': endDate,
+            }, refererPath: '/mobile/yktxfjl');
+        final recordsJson = _decodeJson(recordsResp.data);
+        if (recordsResp.statusCode != 200) {
+          throw Exception('查询流水失败 (${recordsResp.statusCode ?? 0})');
+        }
+        final parsed = recordsJson['data'];
+        if (!_isSuccess(recordsJson) || parsed is! List) {
+          throw Exception('查询流水失败：${_extractMessage(recordsJson)}');
+        }
+        rawData = parsed;
       }
 
       await _waitRandom(180, 500);
 
+      onProgress?.call('正在查询余额...');
       final balance = await _fetchBalance(dio, sid);
+      onProgress?.call('正在获取个人信息...');
       final profile = await _fetchProfile(dio);
-      final rows = _toRecords(sid: sid, rawList: rawData);
+      onProgress?.call('正在整理数据...');
+      final rows = includeTransactions
+          ? _toRecords(sid: sid, rawList: rawData)
+          : <TransactionRecord>[];
 
       return CampusSyncPayload(
         profile: profile,

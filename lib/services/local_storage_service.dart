@@ -73,15 +73,27 @@ class LocalStorageService {
   }
 
   String? get balanceUpdatedAt {
-    return _prefs.getString(_balanceUpdatedAtKey);
+    final value = _prefs.getString(_balanceUpdatedAtKey);
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    return value;
   }
 
   String? get lastSyncAt {
-    return _prefs.getString(_lastSyncAtKey);
+    final value = _prefs.getString(_lastSyncAtKey);
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    return value;
   }
 
   String? get lastSyncDay {
-    return _prefs.getString(_lastSyncDayKey);
+    final value = _prefs.getString(_lastSyncDayKey);
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    return value;
   }
 
   Future<void> saveSyncMeta({

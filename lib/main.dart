@@ -24,7 +24,7 @@ class CanteenApp extends StatelessWidget {
     );
 
     return MaterialApp(
-      title: '食堂消费',
+      title: '一粟',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
@@ -93,7 +93,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   Future<void> _bootstrap() async {
     try {
-      final repo = await CanteenRepository.create();
+      final repo = await CanteenRepository.create().timeout(
+        const Duration(seconds: 20),
+        onTimeout: () => throw TimeoutException('本地数据初始化超时。'),
+      );
       if (!mounted) {
         return;
       }
@@ -127,7 +130,12 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     if (repo == null) {
       return;
     }
-    final summary = await repo.loadSummary(requestedMonth: month);
+    final summary = await repo
+        .loadSummary(requestedMonth: month)
+        .timeout(
+          const Duration(seconds: 12),
+          onTimeout: () => throw TimeoutException('加载本地数据超时。'),
+        );
     if (!mounted) {
       return;
     }
@@ -168,12 +176,23 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     });
 
     try {
-      await repo.syncNow().timeout(
-        const Duration(seconds: 90),
-        onTimeout: () {
-          throw TimeoutException(auto ? '自动刷新超时，稍后可手动重试。' : '刷新超时，请稍后重试。');
-        },
-      );
+      await repo
+          .syncNow(
+            onProgress: (message) {
+              if (!mounted) {
+                return;
+              }
+              setState(() {
+                _status = message;
+              });
+            },
+          )
+          .timeout(
+            const Duration(seconds: 90),
+            onTimeout: () {
+              throw TimeoutException(auto ? '自动刷新超时，稍后可手动重试。' : '刷新超时，请稍后重试。');
+            },
+          );
       if (!mounted) {
         return;
       }
@@ -218,14 +237,26 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
     setState(() {
       _settingUp = true;
-      _status = '正在初始化并同步数据，请稍候...';
+      _status = '正在初始化账号...';
     });
 
+    var initialized = false;
     try {
       await repo
-          .initializeAccount(sid: sid, password: password)
+          .initializeAccount(
+            sid: sid,
+            password: password,
+            onProgress: (message) {
+              if (!mounted) {
+                return;
+              }
+              setState(() {
+                _status = message;
+              });
+            },
+          )
           .timeout(
-            const Duration(seconds: 90),
+            const Duration(seconds: 60),
             onTimeout: () {
               throw TimeoutException('初始化超时，请检查网络后重试。');
             },
@@ -241,8 +272,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       _sidController.clear();
       _passwordController.clear();
       setState(() {
-        _status = '初始化完成。';
+        _status = '初始化完成，正在后台同步消费数据...';
       });
+      initialized = true;
     } catch (error) {
       if (!mounted) {
         return;
@@ -256,6 +288,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           _settingUp = false;
         });
       }
+    }
+    if (initialized) {
+      unawaited(_syncNow(auto: false));
     }
   }
 
@@ -307,6 +342,35 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     if (_booting) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
+    if (_repository == null) {
+      return Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  _status.isEmpty ? '初始化失败。' : _status,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                FilledButton(
+                  onPressed: () {
+                    setState(() {
+                      _booting = true;
+                      _status = '';
+                    });
+                    _bootstrap();
+                  },
+                  child: const Text('重试启动'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     final body = IndexedStack(
       index: _tabIndex,
@@ -338,6 +402,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                 sidController: _sidController,
                 passwordController: _passwordController,
                 submitting: _settingUp,
+                statusMessage: _status,
                 onSubmit: _setupAccount,
               ),
             ),
@@ -386,12 +451,14 @@ class _SetupOverlay extends StatelessWidget {
     required this.sidController,
     required this.passwordController,
     required this.submitting,
+    required this.statusMessage,
     required this.onSubmit,
   });
 
   final TextEditingController sidController;
   final TextEditingController passwordController;
   final bool submitting;
+  final String statusMessage;
   final VoidCallback onSubmit;
 
   @override
@@ -421,9 +488,29 @@ class _SetupOverlay extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '首次使用请填写食堂账号和原密码。应用会自动同步最近一年流水并保存到本地。',
+                      '首次使用请填写食堂账号和原密码。初始化完成后会在后台同步近一年数据。',
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
+                    if (statusMessage.isNotEmpty) ...<Widget>[
+                      const SizedBox(height: 10),
+                      Builder(
+                        builder: (context) {
+                          final isError =
+                              statusMessage.contains('失败') ||
+                              statusMessage.contains('超时') ||
+                              statusMessage.contains('错误');
+                          return Text(
+                            statusMessage,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: isError
+                                      ? Theme.of(context).colorScheme.error
+                                      : Theme.of(context).colorScheme.primary,
+                                ),
+                          );
+                        },
+                      ),
+                    ],
                     const SizedBox(height: 16),
                     TextField(
                       controller: sidController,

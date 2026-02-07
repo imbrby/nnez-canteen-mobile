@@ -29,6 +29,7 @@ class CanteenRepository {
   Future<void> initializeAccount({
     required String sid,
     required String password,
+    void Function(String message)? onProgress,
   }) async {
     final normalizedSid = sid.trim();
     if (normalizedSid.isEmpty || password.isEmpty) {
@@ -40,20 +41,21 @@ class CanteenRepository {
       plainPassword: password,
       startDate: formatShanghaiDay(now.subtract(const Duration(days: 364))),
       endDate: formatShanghaiDay(now),
+      includeTransactions: false,
+      onProgress: onProgress,
     );
 
     await _storage.saveCredentials(sid: normalizedSid, password: password);
     await _storage.saveProfile(payload.profile);
-    await _database.upsertTransactions(normalizedSid, payload.transactions);
     await _storage.saveSyncMeta(
       balance: payload.balance,
       balanceUpdatedAt: payload.balanceUpdatedAt.toIso8601String(),
-      lastSyncAt: DateTime.now().toIso8601String(),
-      lastSyncDay: formatShanghaiDay(shanghaiNow()),
+      lastSyncAt: '',
+      lastSyncDay: '',
     );
   }
 
-  Future<void> syncNow() async {
+  Future<void> syncNow({void Function(String message)? onProgress}) async {
     if (!hasCredential) {
       throw Exception('请先在设置中初始化账号。');
     }
@@ -66,6 +68,8 @@ class CanteenRepository {
       plainPassword: password,
       startDate: formatShanghaiDay(now.subtract(const Duration(days: 364))),
       endDate: formatShanghaiDay(now),
+      includeTransactions: true,
+      onProgress: onProgress,
     );
 
     await _storage.saveProfile(payload.profile);
