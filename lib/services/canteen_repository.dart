@@ -11,7 +11,6 @@ class CanteenRepository {
   CanteenRepository._(this._storage, this._database, this._apiClient);
 
   static const int _initCheckLookbackDays = 3;
-  static const int _manualSyncLookbackDays = 30;
   static const int _autoSyncLookbackDays = 1;
 
   final LocalStorageService _storage;
@@ -114,7 +113,7 @@ class CanteenRepository {
     final range = _buildSyncRange(
       lookbackDays ??
           (includeTransactions
-              ? _manualSyncLookbackDays
+              ? _monthToDateLookbackDays()
               : _autoSyncLookbackDays),
     );
 
@@ -190,8 +189,8 @@ class CanteenRepository {
       }
       dayMap[day] = DailySpending(
         day: day,
-        totalAmount: ((row['total_amount'] ?? 0) as num).toDouble().abs(),
-        txnCount: ((row['txn_count'] ?? 0) as num).toInt(),
+        totalAmount: _toDouble(row['total_amount']).abs(),
+        txnCount: _toInt(row['txn_count']),
       );
     }
 
@@ -217,10 +216,10 @@ class CanteenRepository {
       if (month.isEmpty) {
         continue;
       }
-      final txnCount = ((row['txn_count'] ?? 0) as num).toInt();
+      final txnCount = _toInt(row['txn_count']);
       monthMap[month] = MonthOverview(
         month: month,
-        totalAmount: ((row['total_amount'] ?? 0) as num).toDouble().abs(),
+        totalAmount: _toDouble(row['total_amount']).abs(),
         txnCount: txnCount,
         hasData: txnCount > 0,
       );
@@ -286,6 +285,30 @@ class CanteenRepository {
       ),
       endDate: formatShanghaiDay(now),
     );
+  }
+
+  int _monthToDateLookbackDays() {
+    final day = shanghaiNow().day;
+    return day < 1 ? 1 : day;
+  }
+
+  double _toDouble(Object? value) {
+    if (value is num) {
+      final parsed = value.toDouble();
+      return parsed.isFinite ? parsed : 0;
+    }
+    final parsed = double.tryParse(value?.toString() ?? '');
+    if (parsed == null || !parsed.isFinite) {
+      return 0;
+    }
+    return parsed;
+  }
+
+  int _toInt(Object? value) {
+    if (value is num) {
+      return value.toInt();
+    }
+    return int.tryParse(value?.toString() ?? '') ?? 0;
   }
 
   String _resolveMonth({

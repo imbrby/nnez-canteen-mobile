@@ -313,23 +313,22 @@ class _DailyTable extends StatelessWidget {
     }
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      child: DataTable(
-        columns: const <DataColumn>[
-          DataColumn(label: Text('日期')),
-          DataColumn(label: Text('消费总额')),
-          DataColumn(label: Text('笔数')),
-        ],
-        rows: daily
-            .map(
-              (item) => DataRow(
-                cells: <DataCell>[
-                  DataCell(Text(item.day)),
-                  DataCell(Text('¥${item.totalAmount.toStringAsFixed(2)}')),
-                  DataCell(Text('${item.txnCount}')),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 340),
+        child: Column(
+          children: <Widget>[
+            const _TableHeader(columns: <String>['日期', '消费总额', '笔数']),
+            ...daily.map(
+              (item) => _TableRow(
+                columns: <String>[
+                  item.day,
+                  '¥${item.totalAmount.toStringAsFixed(2)}',
+                  '${item.txnCount}',
                 ],
               ),
-            )
-            .toList(),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -347,20 +346,87 @@ class _RecentTable extends StatelessWidget {
     }
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      child: DataTable(
-        columns: const <DataColumn>[
-          DataColumn(label: Text('时间')),
-          DataColumn(label: Text('消费点')),
-          DataColumn(label: Text('金额')),
-        ],
-        rows: recent
-            .map(
-              (item) => DataRow(
-                cells: <DataCell>[
-                  DataCell(Text(formatDateTime(item.occurredAt))),
-                  DataCell(Text(item.itemName)),
-                  DataCell(Text('¥${item.amount.toStringAsFixed(2)}')),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 420),
+        child: Column(
+          children: <Widget>[
+            const _TableHeader(columns: <String>['时间', '消费点', '金额']),
+            ...recent.map(
+              (item) => _TableRow(
+                columns: <String>[
+                  formatDateTime(item.occurredAt),
+                  item.itemName.isEmpty ? '-' : item.itemName,
+                  '¥${item.amount.toStringAsFixed(2)}',
                 ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TableHeader extends StatelessWidget {
+  const _TableHeader({required this.columns});
+
+  final List<String> columns;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(
+          context,
+        ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      child: Row(
+        children: columns
+            .map(
+              (value) => Expanded(
+                child: Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            )
+            .toList(),
+      ),
+    );
+  }
+}
+
+class _TableRow extends StatelessWidget {
+  const _TableRow({required this.columns});
+
+  final List<String> columns;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
+        ),
+      ),
+      child: Row(
+        children: columns
+            .map(
+              (value) => Expanded(
+                child: Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             )
             .toList(),

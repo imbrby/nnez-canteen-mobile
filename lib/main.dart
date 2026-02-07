@@ -499,7 +499,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           isSyncing: _syncing || _settingUp,
           status: _status,
           onMonthChanged: (month) {
-            _reloadSummary(month: month);
+            _reloadSummarySafe(month: month);
           },
         ),
         SettingsPage(

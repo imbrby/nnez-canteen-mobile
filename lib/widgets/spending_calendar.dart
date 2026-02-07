@@ -77,6 +77,9 @@ class SpendingCalendar extends StatelessWidget {
     final year = int.tryParse(parts[0]) ?? 1970;
     final month = int.tryParse(parts[1]) ?? 1;
     final date = int.tryParse(parts[2]) ?? 1;
+    if (year < 1970 || month < 1 || month > 12 || date < 1 || date > 31) {
+      return 0;
+    }
     return DateTime.utc(year, month, date, 12).weekday % 7;
   }
 }
@@ -96,41 +99,38 @@ class _DayCell extends StatelessWidget {
         : '-';
     final amountText = amount > 0 ? amount.toStringAsFixed(2) : '-';
 
-    return Tooltip(
-      message: '${day.day}  ¥${amount.toStringAsFixed(2)} / ${day.txnCount} 笔',
-      child: Container(
-        decoration: BoxDecoration(
-          color: background,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: const Color(0x1A2F2A25)),
-        ),
-        padding: const EdgeInsets.all(6),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text(
-              dayText,
+    return Container(
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0x1A2F2A25)),
+      ),
+      padding: const EdgeInsets.all(6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            dayText,
+            style: TextStyle(
+              color: textColor,
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+            ),
+          ),
+          const Spacer(),
+          Align(
+            alignment: Alignment.bottomRight,
+            child: Text(
+              amountText,
               style: TextStyle(
-                color: textColor,
-                fontWeight: FontWeight.w700,
-                fontSize: 12,
+                color: amount > 0
+                    ? textColor
+                    : textColor.withValues(alpha: 0.45),
+                fontSize: 11,
               ),
             ),
-            const Spacer(),
-            Align(
-              alignment: Alignment.bottomRight,
-              child: Text(
-                amountText,
-                style: TextStyle(
-                  color: amount > 0
-                      ? textColor
-                      : textColor.withValues(alpha: 0.45),
-                  fontSize: 11,
-                ),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
