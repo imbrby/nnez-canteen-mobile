@@ -3,26 +3,24 @@ import 'dart:async';
 import 'package:mobile_app/core/time_utils.dart';
 import 'package:mobile_app/models/campus_profile.dart';
 import 'package:mobile_app/models/home_summary.dart';
+import 'package:mobile_app/models/transaction_record.dart';
 import 'package:mobile_app/services/app_log_service.dart';
 import 'package:mobile_app/services/campus_api_client.dart';
-import 'package:mobile_app/services/local_database_service.dart';
 import 'package:mobile_app/services/local_storage_service.dart';
 
 class CanteenRepository {
-  CanteenRepository._(this._storage, this._database, this._apiClient);
+  CanteenRepository._(this._storage, this._apiClient);
 
   static const int _initCheckLookbackDays = 3;
   static const int _autoSyncLookbackDays = 1;
 
   final LocalStorageService _storage;
-  final LocalDatabaseService _database;
   final CampusApiClient _apiClient;
 
   static Future<CanteenRepository> create() async {
     final storage = await LocalStorageService.create();
-    final database = LocalDatabaseService();
     final apiClient = CampusApiClient();
-    return CanteenRepository._(storage, database, apiClient);
+    return CanteenRepository._(storage, apiClient);
   }
 
   bool get hasCredential => _storage.hasCredential;
@@ -66,6 +64,10 @@ class CanteenRepository {
           lastSyncDay: '',
         );
       }, '保存同步状态超时');
+      await _runTimed(
+        () => _storage.saveTransactions(normalizedSid, <TransactionRecord>[]),
+        '清理本地消费缓存超时',
+      );
       return;
     }
 
@@ -134,19 +136,10 @@ class CanteenRepository {
       timeout: const Duration(seconds: 6),
     );
     if (includeTransactions) {
-      await _withTimeout(
-        () => _database.init(),
-        step: 'sync.db.init',
-        timeout: const Duration(seconds: 8),
-      );
       onProgress?.call('正在写入本地数据...');
       await _withTimeout(
-        () => _database.upsertTransactions(
-          sid,
-          payload.transactions,
-          onProgress: onProgress,
-        ),
-        step: 'sync.db.upsertTransactions',
+        () => _storage.saveTransactions(sid, payload.transactions),
+        step: 'sync.storage.saveTransactions',
         timeout: const Duration(seconds: 20),
       );
     }
@@ -180,12 +173,7 @@ class CanteenRepository {
       _logInfo('loadSummary skipped: no credential');
       return null;
     }
-    LocalDatabaseService? reader;
     try {
-      final dbReader = LocalDatabaseService();
-      reader = dbReader;
-      await _withTimeout(() => dbReader.init(), step: 'reader.init');
-
       final sid = _storage.campusSid;
       final currentMonth = monthOf(shanghaiNow());
       final earliestMonth = addMonths(currentMonth, -11);
@@ -206,14 +194,13 @@ class CanteenRepository {
       );
       unawaited(_saveSelectedMonthNonBlocking(selectedMonth));
 
-      final selectedRows = await _withTimeout(
-        () => dbReader.queryByDayRange(
-          sid: sid,
-          startDate: selectedStart,
-          endDate: selectedEnd,
-        ),
-        step: 'reader.queryByDayRange(selected)',
-      );
+      final allRows = _storage.loadTransactions(sid);
+      _logInfo('allRows loaded from storage: ${allRows.length}');
+      final selectedRows = allRows
+          .where(
+            (row) => _dayInRange(row.occurredDay, selectedStart, selectedEnd),
+          )
+          .toList();
       _logInfo('selectedRows loaded: ${selectedRows.length}');
 
       final dayMap = <String, DailySpending>{};
@@ -246,14 +233,11 @@ class CanteenRepository {
           .toList();
       _logInfo('daily series built: ${daily.length}');
 
-      final historyRows = await _withTimeout(
-        () => dbReader.queryByDayRange(
-          sid: sid,
-          startDate: historyStart,
-          endDate: historyEnd,
-        ),
-        step: 'reader.queryByDayRange(history)',
-      );
+      final historyRows = allRows
+          .where(
+            (row) => _dayInRange(row.occurredDay, historyStart, historyEnd),
+          )
+          .toList();
       _logInfo('historyRows loaded: ${historyRows.length}');
       final monthMap = <String, MonthOverview>{};
       for (final row in historyRows) {
@@ -336,35 +320,15 @@ class CanteenRepository {
     } catch (error, stackTrace) {
       _logError('loadSummary failed', error, stackTrace);
       rethrow;
-    } finally {
-      if (reader != null) {
-        try {
-          await reader.close().timeout(
-            const Duration(seconds: 3),
-            onTimeout: () {
-              throw TimeoutException('reader.close 超时');
-            },
-          );
-          _logInfo('reader.close ok');
-        } catch (error, stackTrace) {
-          _logError('reader.close failed', error, stackTrace);
-        }
-      }
     }
   }
 
   Future<void> logout() async {
     await _storage.clearAll();
-    try {
-      await _database.init();
-      await _database.clearAll();
-    } catch (_) {
-      // ignore db clear failure in logout path
-    }
   }
 
-  Future<void> close() {
-    return _database.close();
+  Future<void> close() async {
+    return;
   }
 
   ({String startDate, String endDate}) _buildSyncRange(int lookbackDays) {
@@ -428,6 +392,13 @@ class CanteenRepository {
         stackTrace: stackTrace,
       ),
     );
+  }
+
+  bool _dayInRange(String day, String startDay, String endDay) {
+    if (day.length != 10) {
+      return false;
+    }
+    return day.compareTo(startDay) >= 0 && day.compareTo(endDay) <= 0;
   }
 
   String _resolveMonth({

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:mobile_app/models/campus_profile.dart';
+import 'package:mobile_app/models/transaction_record.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 
@@ -19,6 +20,7 @@ class LocalStorageService {
   static const _lastSyncAtKey = 'last_sync_at';
   static const _lastSyncDayKey = 'last_sync_day';
   static const _selectedMonthKey = 'selected_month';
+  static const _transactionsBySidKey = 'transactions_by_sid';
 
   static Future<LocalStorageService> create() async {
     final baseDir = await getApplicationDocumentsDirectory();
@@ -151,6 +153,68 @@ class LocalStorageService {
     await _persist();
   }
 
+  Future<void> saveTransactions(
+    String sid,
+    List<TransactionRecord> rows,
+  ) async {
+    final key = sid.trim();
+    if (key.isEmpty) {
+      return;
+    }
+    final map = _readTransactionsBySid();
+    map[key] = rows.map((item) => item.toJson()).toList();
+    _cache[_transactionsBySidKey] = map;
+    await _persist();
+  }
+
+  List<TransactionRecord> loadTransactions(String sid) {
+    final key = sid.trim();
+    if (key.isEmpty) {
+      return <TransactionRecord>[];
+    }
+    final map = _readTransactionsBySid();
+    final raw = map[key];
+    if (raw is! List) {
+      return <TransactionRecord>[];
+    }
+    final out = <TransactionRecord>[];
+    for (final item in raw) {
+      if (item is! Map) {
+        continue;
+      }
+      try {
+        out.add(TransactionRecord.fromJsonMap(Map<String, dynamic>.from(item)));
+      } catch (_) {
+        // skip malformed row
+      }
+    }
+    return out;
+  }
+
+  Map<String, dynamic> _readTransactionsBySid() {
+    final raw = _cache[_transactionsBySidKey];
+    if (raw is Map<String, dynamic>) {
+      return Map<String, dynamic>.from(raw);
+    }
+    if (raw is Map) {
+      return Map<String, dynamic>.from(raw);
+    }
+    if (raw is String && raw.isNotEmpty) {
+      try {
+        final parsed = jsonDecode(raw);
+        if (parsed is Map<String, dynamic>) {
+          return Map<String, dynamic>.from(parsed);
+        }
+        if (parsed is Map) {
+          return Map<String, dynamic>.from(parsed);
+        }
+      } catch (_) {
+        return <String, dynamic>{};
+      }
+    }
+    return <String, dynamic>{};
+  }
+
   Future<void> clearAll() async {
     _cache
       ..remove(_sidKey)
@@ -160,7 +224,8 @@ class LocalStorageService {
       ..remove(_balanceUpdatedAtKey)
       ..remove(_lastSyncAtKey)
       ..remove(_lastSyncDayKey)
-      ..remove(_selectedMonthKey);
+      ..remove(_selectedMonthKey)
+      ..remove(_transactionsBySidKey);
     await _persist();
   }
 }

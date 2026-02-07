@@ -47,4 +47,40 @@ class TransactionRecord {
       rawPayload: (map['raw_payload'] ?? '').toString(),
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      'sid': sid,
+      'txnId': txnId,
+      'amount': amount,
+      'balance': balance,
+      'occurredAt': occurredAt,
+      'occurredDay': occurredDay,
+      'itemName': itemName,
+      'rawPayload': rawPayload,
+    };
+  }
+
+  factory TransactionRecord.fromJsonMap(Map<String, dynamic> map) {
+    final amountRaw = map['amount'];
+    final amount = amountRaw is num
+        ? amountRaw.toDouble()
+        : double.tryParse(amountRaw?.toString() ?? '') ?? 0;
+    final balanceRaw = map['balance'];
+    final parsedBalance = balanceRaw == null
+        ? null
+        : (balanceRaw is num
+              ? balanceRaw.toDouble()
+              : double.tryParse(balanceRaw.toString()));
+    return TransactionRecord(
+      sid: (map['sid'] ?? '').toString(),
+      txnId: (map['txnId'] ?? '').toString(),
+      amount: amount,
+      balance: parsedBalance,
+      occurredAt: (map['occurredAt'] ?? '').toString(),
+      occurredDay: (map['occurredDay'] ?? '').toString(),
+      itemName: (map['itemName'] ?? '').toString(),
+      rawPayload: (map['rawPayload'] ?? '').toString(),
+    );
+  }
 }
