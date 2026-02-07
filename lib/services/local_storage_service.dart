@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:mobile_app/models/campus_profile.dart';
-import 'package:mobile_app/models/transaction_record.dart';
 import 'package:mobile_app/services/app_log_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -10,8 +9,6 @@ class LocalStorageService {
   LocalStorageService._(this._prefs);
 
   final SharedPreferences _prefs;
-  final Map<String, List<TransactionRecord>> _transactionsCache =
-      <String, List<TransactionRecord>>{};
   Future<void> _writeQueue = Future<void>.value();
 
   static const _sidKey = 'campus_sid';
@@ -22,7 +19,7 @@ class LocalStorageService {
   static const _lastSyncAtKey = 'last_sync_at';
   static const _lastSyncDayKey = 'last_sync_day';
   static const _selectedMonthKey = 'selected_month';
-  static const _txPrefix = 'transactions_sid_';
+  static const _legacyTxPrefix = 'transactions_sid_';
 
   static Future<LocalStorageService> create() async {
     final watch = Stopwatch()..start();
@@ -132,60 +129,8 @@ class LocalStorageService {
     });
   }
 
-  Future<void> saveTransactions(
-    String sid,
-    List<TransactionRecord> rows,
-  ) async {
-    final key = sid.trim();
-    if (key.isEmpty) {
-      return;
-    }
-    await _enqueueWrite(
-      'saveTransactions sid=$key rows=${rows.length}',
-      () async {
-        _transactionsCache[key] = List<TransactionRecord>.from(rows);
-        final encoded = jsonEncode(rows.map((item) => item.toJson()).toList());
-        await _prefs.setString(_txKey(key), encoded);
-      },
-    );
-  }
-
-  List<TransactionRecord> loadTransactions(String sid) {
-    final key = sid.trim();
-    if (key.isEmpty) {
-      return <TransactionRecord>[];
-    }
-    final cached = _transactionsCache[key];
-    if (cached != null) {
-      return List<TransactionRecord>.from(cached);
-    }
-    final raw = _prefs.getString(_txKey(key));
-    if (raw == null || raw.trim().isEmpty) {
-      return <TransactionRecord>[];
-    }
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! List) {
-        return <TransactionRecord>[];
-      }
-      final out = <TransactionRecord>[];
-      for (final item in decoded) {
-        if (item is! Map) {
-          continue;
-        }
-        out.add(TransactionRecord.fromJsonMap(Map<String, dynamic>.from(item)));
-      }
-      _transactionsCache[key] = List<TransactionRecord>.from(out);
-      return out;
-    } catch (error) {
-      _logInfo('loadTransactions parse failed sid=$key: $error');
-      return <TransactionRecord>[];
-    }
-  }
-
   Future<void> clearAll() async {
     await _enqueueWrite('clearAll', () async {
-      _transactionsCache.clear();
       await _prefs.remove(_sidKey);
       await _prefs.remove(_passwordKey);
       await _prefs.remove(_profileKey);
@@ -194,17 +139,20 @@ class LocalStorageService {
       await _prefs.remove(_lastSyncAtKey);
       await _prefs.remove(_lastSyncDayKey);
       await _prefs.remove(_selectedMonthKey);
+    });
+  }
+
+  Future<void> removeLegacyTransactionKeys() async {
+    await _enqueueWrite('removeLegacyTransactionKeys', () async {
       final keys = _prefs.getKeys();
       for (final key in keys) {
-        if (!key.startsWith(_txPrefix)) {
+        if (!key.startsWith(_legacyTxPrefix)) {
           continue;
         }
         await _prefs.remove(key);
       }
     });
   }
-
-  String _txKey(String sid) => '$_txPrefix$sid';
 
   Future<void> _enqueueWrite(String step, Future<void> Function() action) {
     final watch = Stopwatch()..start();

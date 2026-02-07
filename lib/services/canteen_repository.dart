@@ -6,17 +6,17 @@ import 'package:mobile_app/models/home_summary.dart';
 import 'package:mobile_app/models/transaction_record.dart';
 import 'package:mobile_app/services/app_log_service.dart';
 import 'package:mobile_app/services/campus_api_client.dart';
+import 'package:mobile_app/services/local_database_service.dart';
 import 'package:mobile_app/services/local_storage_service.dart';
 
 class CanteenRepository {
-  CanteenRepository._(this._storage, this._apiClient);
+  CanteenRepository._(this._storage, this._db, this._apiClient);
 
   static const int _initCheckLookbackDays = 3;
   static const int _autoSyncLookbackDays = 1;
-  static final Map<String, List<TransactionRecord>> _volatileRowsBySid =
-      <String, List<TransactionRecord>>{};
 
   final LocalStorageService _storage;
+  final LocalDatabaseService _db;
   final CampusApiClient _apiClient;
   CampusProfile? _volatileProfile;
   double? _volatileBalance;
@@ -26,8 +26,12 @@ class CanteenRepository {
 
   static Future<CanteenRepository> create() async {
     final storage = await LocalStorageService.create();
+    final db = LocalDatabaseService();
+    await db.init();
     final apiClient = CampusApiClient();
-    return CanteenRepository._(storage, apiClient);
+    final repo = CanteenRepository._(storage, db, apiClient);
+    unawaited(storage.removeLegacyTransactionKeys());
+    return repo;
   }
 
   bool get hasCredential => _storage.hasCredential;
@@ -76,10 +80,6 @@ class CanteenRepository {
       _volatileBalanceUpdatedAt = '';
       _volatileLastSyncAt = '';
       _volatileLastSyncDay = '';
-      await _runTimed(
-        () => _storage.saveTransactions(normalizedSid, <TransactionRecord>[]),
-        '清理本地消费缓存超时',
-      );
       return;
     }
 
@@ -223,39 +223,23 @@ class CanteenRepository {
       );
       unawaited(_saveSelectedMonthNonBlocking(selectedMonth));
 
-      final allRows = _storage.loadTransactions(sid);
-      final effectiveRows = allRows.isNotEmpty
-          ? allRows
-          : (_volatileRowsBySid[sid] ?? <TransactionRecord>[]);
-      _logInfo(
-        'allRows loaded from storage: ${allRows.length}, volatile: ${(_volatileRowsBySid[sid] ?? <TransactionRecord>[]).length}',
+      // Query daily totals for the selected month from SQLite.
+      final dailyRows = await _db.queryDailyTotals(
+        sid: sid,
+        startDate: selectedStart,
+        endDate: selectedEnd,
       );
-      final selectedRows = effectiveRows
-          .where(
-            (row) => _dayInRange(row.occurredDay, selectedStart, selectedEnd),
-          )
-          .toList();
-      _logInfo('selectedRows loaded: ${selectedRows.length}');
+      _logInfo('dailyRows from SQL: ${dailyRows.length}');
 
       final dayMap = <String, DailySpending>{};
-      for (final row in selectedRows) {
-        final day = row.occurredDay;
-        final current = dayMap[day];
-        if (current == null) {
-          dayMap[day] = DailySpending(
-            day: day,
-            totalAmount: row.amount.abs(),
-            txnCount: 1,
-          );
-          continue;
-        }
+      for (final row in dailyRows) {
+        final day = row['day'] as String;
         dayMap[day] = DailySpending(
           day: day,
-          totalAmount: current.totalAmount + row.amount.abs(),
-          txnCount: current.txnCount + 1,
+          totalAmount: ((row['total_amount'] as num?)?.toDouble() ?? 0).abs(),
+          txnCount: (row['txn_count'] as int?) ?? 0,
         );
       }
-      _logInfo('dayMap aggregated: ${dayMap.length}');
 
       final fullDays = daysBetween(selectedStart, selectedEnd);
       final daily = fullDays
@@ -267,47 +251,24 @@ class CanteenRepository {
           .toList();
       _logInfo('daily series built: ${daily.length}');
 
-      final historyRows = effectiveRows
-          .where(
-            (row) => _dayInRange(row.occurredDay, historyStart, historyEnd),
-          )
-          .toList();
-      _logInfo('historyRows loaded: ${historyRows.length}');
+      // Query monthly totals for the history window from SQLite.
+      final monthlyRows = await _db.queryMonthlyTotals(
+        sid: sid,
+        startDate: historyStart,
+        endDate: historyEnd,
+      );
+      _logInfo('monthlyRows from SQL: ${monthlyRows.length}');
+
       final monthMap = <String, MonthOverview>{};
-      for (final row in historyRows) {
-        if (row.occurredDay.length < 7) {
-          continue;
-        }
-        final month = row.occurredDay.substring(0, 7);
-        final current = monthMap[month];
-        if (current == null) {
-          monthMap[month] = MonthOverview(
-            month: month,
-            totalAmount: row.amount.abs(),
-            txnCount: 1,
-            hasData: true,
-          );
-          continue;
-        }
+      for (final row in monthlyRows) {
+        final month = row['month'] as String;
         monthMap[month] = MonthOverview(
           month: month,
-          totalAmount: current.totalAmount + row.amount.abs(),
-          txnCount: current.txnCount + 1,
+          totalAmount: ((row['total_amount'] as num?)?.toDouble() ?? 0).abs(),
+          txnCount: (row['txn_count'] as int?) ?? 0,
           hasData: true,
         );
       }
-      _logInfo('monthMap aggregated: ${monthMap.length}');
-
-      final recent = historyRows.toList()
-        ..sort((a, b) {
-          final byTime = b.occurredAt.compareTo(a.occurredAt);
-          if (byTime != 0) {
-            return byTime;
-          }
-          return b.txnId.compareTo(a.txnId);
-        });
-      final recentTop20 = recent.take(20).toList();
-      _logInfo('recentTop20 built: ${recentTop20.length}');
 
       final availableMonths = monthsBetween(earliestMonth, currentMonth)
           .map(
@@ -322,6 +283,10 @@ class CanteenRepository {
           )
           .toList();
 
+      // Query recent 20 transactions from SQLite.
+      final recentTop20 = await _db.queryRecent(sid: sid, limit: 20);
+      _logInfo('recentTop20 from SQL: ${recentTop20.length}');
+
       final totalAmount = daily.fold<double>(
         0,
         (sum, item) => sum + item.totalAmount,
@@ -335,7 +300,7 @@ class CanteenRepository {
       );
 
       _logInfo(
-        'loadSummary done month=$selectedMonth daily=${daily.length} recent=${recentTop20.length} history=${historyRows.length}',
+        'loadSummary done month=$selectedMonth daily=${daily.length} recent=${recentTop20.length}',
       );
       return HomeSummary(
         selectedMonth: selectedMonth,
@@ -364,11 +329,12 @@ class CanteenRepository {
     _volatileBalanceUpdatedAt = null;
     _volatileLastSyncAt = null;
     _volatileLastSyncDay = null;
+    await _db.clearAll();
     await _storage.clearAll();
   }
 
   Future<void> close() async {
-    return;
+    await _db.close();
   }
 
   ({String startDate, String endDate}) _buildSyncRange(int lookbackDays) {
@@ -438,20 +404,15 @@ class CanteenRepository {
     String sid,
     List<TransactionRecord> rows,
   ) async {
-    _volatileRowsBySid[sid] = List<TransactionRecord>.from(rows);
     try {
       await _withTimeout(
-        () => _storage.saveTransactions(sid, rows),
-        step: 'sync.storage.saveTransactions',
-        timeout: const Duration(seconds: 3),
+        () => _db.upsertTransactions(sid, rows),
+        step: 'sync.db.upsertTransactions',
+        timeout: const Duration(seconds: 8),
       );
-      _logInfo('saveTransactions persisted rows=${rows.length}');
+      _logInfo('upsertTransactions persisted rows=${rows.length}');
     } catch (error, stackTrace) {
-      _logError(
-        'saveTransactions fallback to volatile cache',
-        error,
-        stackTrace,
-      );
+      _logError('upsertTransactions best-effort failed', error, stackTrace);
     }
   }
 
@@ -495,13 +456,6 @@ class CanteenRepository {
     } catch (error, stackTrace) {
       _logError('saveSyncMeta best-effort failed', error, stackTrace);
     }
-  }
-
-  bool _dayInRange(String day, String startDay, String endDay) {
-    if (day.length != 10) {
-      return false;
-    }
-    return day.compareTo(startDay) >= 0 && day.compareTo(endDay) <= 0;
   }
 
   String _resolveMonth({
