@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:mobile_app/core/time_utils.dart';
@@ -6,13 +7,54 @@ import 'package:mobile_app/models/campus_profile.dart';
 import 'package:mobile_app/models/home_summary.dart';
 import 'package:mobile_app/pages/home_page.dart';
 import 'package:mobile_app/pages/settings_page.dart';
+import 'package:mobile_app/services/app_log_service.dart';
 import 'package:mobile_app/services/canteen_repository.dart';
 import 'package:mobile_app/services/local_database_service.dart';
 import 'package:mobile_app/services/local_storage_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const CanteenApp());
+  await AppLogService.instance.init();
+  await AppLogService.instance.info('应用启动', tag: 'BOOT');
+
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    unawaited(
+      AppLogService.instance.error(
+        'FlutterError: ${details.exceptionAsString()}',
+        tag: 'CRASH',
+        stackTrace: details.stack,
+      ),
+    );
+  };
+
+  ui.PlatformDispatcher.instance.onError = (error, stackTrace) {
+    unawaited(
+      AppLogService.instance.error(
+        'PlatformDispatcher 未捕获异常',
+        tag: 'CRASH',
+        error: error,
+        stackTrace: stackTrace,
+      ),
+    );
+    return false;
+  };
+
+  await runZonedGuarded(
+    () async {
+      runApp(const CanteenApp());
+    },
+    (error, stackTrace) {
+      unawaited(
+        AppLogService.instance.error(
+          'runZonedGuarded 未捕获异常',
+          tag: 'CRASH',
+          error: error,
+          stackTrace: stackTrace,
+        ),
+      );
+    },
+  );
 }
 
 class CanteenApp extends StatelessWidget {
@@ -72,12 +114,14 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _logInfo('AppShell initState');
     _startBootWatchdog();
     _bootstrap();
   }
 
   @override
   void dispose() {
+    _logInfo('AppShell dispose');
     WidgetsBinding.instance.removeObserver(this);
     _bootWatchdog?.cancel();
     _sidController.dispose();
@@ -88,6 +132,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    _logInfo('Lifecycle: $state');
     if (state == AppLifecycleState.resumed && !_safeModeDisableAutoTasks) {
       _autoSyncIfNeeded();
     }
@@ -100,10 +145,12 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   void _startBootWatchdog() {
     _bootWatchdog?.cancel();
+    _logInfo('启动看门狗已开启 (25s)');
     _bootWatchdog = Timer(const Duration(seconds: 25), () {
       if (!mounted || !_booting) {
         return;
       }
+      _logWarn('启动看门狗触发超时');
       setState(() {
         _booting = false;
         _status = '启动超时，请点击重试。';
@@ -112,6 +159,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   }
 
   Future<void> _bootstrap() async {
+    _logInfo('开始 bootstrap');
     try {
       final repo = await CanteenRepository.create().timeout(
         const Duration(seconds: 20),
@@ -127,7 +175,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           _status = '上次同步：${formatDateTime(repo.lastSyncAt)}';
         }
       });
-    } catch (error) {
+      _logInfo('bootstrap 完成，hasCredential=${repo.hasCredential}');
+    } catch (error, stackTrace) {
+      _logError('bootstrap 失败', error, stackTrace);
       if (!mounted) {
         return;
       }
@@ -136,6 +186,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       });
     } finally {
       _bootWatchdog?.cancel();
+      _logInfo('bootstrap 结束，开始加载摘要与自动刷新检查');
       if (mounted) {
         setState(() {
           _booting = false;
@@ -152,6 +203,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     if (_syncing || _settingUp) {
       return;
     }
+    _logInfo('手动重试启动');
     await _repository?.close();
     if (!mounted) {
       return;
@@ -171,6 +223,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     if (_syncing || _settingUp) {
       return;
     }
+    _logWarn('用户触发清空本地数据并重试');
     setState(() {
       _booting = true;
       _status = '正在清理本地数据...';
@@ -181,7 +234,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       final storage = await LocalStorageService.create();
       await storage.clearAll();
       await LocalDatabaseService.deleteDatabaseFile();
-    } catch (_) {
+    } catch (error, stackTrace) {
+      _logError('清理本地数据失败（已忽略）', error, stackTrace);
       // ignore cleanup error and continue retry.
     }
 
@@ -203,6 +257,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     if (repo == null) {
       return;
     }
+    _logInfo('加载摘要 month=${month ?? "(current)"}');
     final summary = await repo
         .loadSummary(requestedMonth: month)
         .timeout(
@@ -215,12 +270,16 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     setState(() {
       _summary = summary;
     });
+    final hasData =
+        summary != null && summary.daily.any((item) => item.txnCount > 0);
+    _logInfo('摘要加载完成 hasData=$hasData month=${summary?.selectedMonth ?? "-"}');
   }
 
   Future<void> _reloadSummarySafe({String? month}) async {
     try {
       await _reloadSummary(month: month);
-    } catch (error) {
+    } catch (error, stackTrace) {
+      _logError('加载摘要失败', error, stackTrace);
       if (!mounted) {
         return;
       }
@@ -240,6 +299,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     if (repo == null || !repo.hasCredential || _settingUp || _syncing) {
       return;
     }
+    _logInfo('自动刷新检查，lastSyncDay=${repo.lastSyncAt ?? "-"}');
     if (!repo.shouldAutoSyncToday()) {
       if (showLastSyncWhenNoAction &&
           repo.lastSyncAt != null &&
@@ -250,6 +310,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       }
       return;
     }
+    _logInfo('触发自动刷新');
     await _syncNow(auto: true, includeTransactions: true, lookbackDays: 2);
   }
 
@@ -262,6 +323,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     if (repo == null || !repo.hasCredential || _settingUp || _syncing) {
       return;
     }
+    _logInfo(
+      '开始刷新 auto=$auto includeTransactions=$includeTransactions lookbackDays=${lookbackDays ?? "-"}',
+    );
 
     setState(() {
       _syncing = true;
@@ -279,6 +343,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
               if (!mounted) {
                 return;
               }
+              _logInfo('刷新进度: $message');
               setState(() {
                 _status = message;
               });
@@ -301,7 +366,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       setState(() {
         _status = '刷新完成。';
       });
-    } catch (error) {
+      _logInfo('刷新完成');
+    } catch (error, stackTrace) {
+      _logError('刷新失败', error, stackTrace);
       if (!mounted) {
         return;
       }
@@ -331,6 +398,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       });
       return;
     }
+    _logInfo('开始初始化账号 sid=$sid');
 
     setState(() {
       _settingUp = true;
@@ -347,6 +415,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
               if (!mounted) {
                 return;
               }
+              _logInfo('初始化进度: $message');
               setState(() {
                 _status = message;
               });
@@ -370,7 +439,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       setState(() {
         _status = '初始化完成（已跳过远程校验）。请进入主页后点右下角刷新同步。';
       });
-    } catch (error) {
+      _logInfo('初始化账号完成');
+    } catch (error, stackTrace) {
+      _logError('初始化账号失败', error, stackTrace);
       if (!mounted) {
         return;
       }
@@ -396,6 +467,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       _syncing = true;
       _status = '正在退出...';
     });
+    _logInfo('开始退出登录');
 
     try {
       await repo.logout();
@@ -408,7 +480,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         _status = '已退出并清空本地数据。';
         _tabIndex = 1;
       });
-    } catch (error) {
+      _logInfo('退出登录完成');
+    } catch (error, stackTrace) {
+      _logError('退出登录失败', error, stackTrace);
       if (!mounted) {
         return;
       }
@@ -432,6 +506,25 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     );
     final cleaned = cleanedTimeout.replaceFirst(RegExp(r'^Exception:\s*'), '');
     return cleaned.trim().isEmpty ? '未知错误' : cleaned.trim();
+  }
+
+  void _logInfo(String message) {
+    unawaited(AppLogService.instance.info(message, tag: 'APP'));
+  }
+
+  void _logWarn(String message) {
+    unawaited(AppLogService.instance.warn(message, tag: 'APP'));
+  }
+
+  void _logError(String context, Object error, StackTrace stackTrace) {
+    unawaited(
+      AppLogService.instance.error(
+        context,
+        tag: 'APP',
+        error: error,
+        stackTrace: stackTrace,
+      ),
+    );
   }
 
   @override
