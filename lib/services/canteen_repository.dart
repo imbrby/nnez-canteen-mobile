@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:mobile_app/core/time_utils.dart';
 import 'package:mobile_app/models/campus_profile.dart';
 import 'package:mobile_app/models/home_summary.dart';
@@ -51,13 +53,30 @@ class CanteenRepository {
     );
 
     onProgress?.call('正在保存账号信息...');
-    await _storage.saveCredentials(sid: normalizedSid, password: password);
-    await _storage.saveProfile(payload.profile);
-    await _storage.saveSyncMeta(
-      balance: payload.balance,
-      balanceUpdatedAt: payload.balanceUpdatedAt.toIso8601String(),
-      lastSyncAt: '',
-      lastSyncDay: '',
+    await _runTimed(
+      () => _storage.saveCredentials(sid: normalizedSid, password: password),
+      '保存账号信息超时',
+    );
+    await _runTimed(() => _storage.saveProfile(payload.profile), '保存用户信息超时');
+    await _runTimed(() {
+      return _storage.saveSyncMeta(
+        balance: payload.balance,
+        balanceUpdatedAt: payload.balanceUpdatedAt.toIso8601String(),
+        lastSyncAt: '',
+        lastSyncDay: '',
+      );
+    }, '保存同步状态超时');
+  }
+
+  Future<void> _runTimed(
+    Future<void> Function() action,
+    String timeoutMessage,
+  ) {
+    return action().timeout(
+      const Duration(seconds: 10),
+      onTimeout: () {
+        throw TimeoutException(timeoutMessage);
+      },
     );
   }
 

@@ -118,14 +118,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       if (!mounted) {
         return;
       }
-      _repository = repo;
-      _profile = repo.profile;
-      await _reloadSummary();
-      if (repo.lastSyncAt != null && _status.isEmpty) {
-        setState(() {
+      setState(() {
+        _repository = repo;
+        _profile = repo.profile;
+        if (repo.lastSyncAt != null && _status.isEmpty) {
           _status = '上次同步：${formatDateTime(repo.lastSyncAt)}';
-        });
-      }
+        }
+      });
     } catch (error) {
       if (!mounted) {
         return;
@@ -140,6 +139,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           _booting = false;
         });
       }
+      unawaited(_reloadSummarySafe());
       unawaited(_autoSyncIfNeeded(showLastSyncWhenNoAction: true));
     }
   }
@@ -213,6 +213,19 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     });
   }
 
+  Future<void> _reloadSummarySafe({String? month}) async {
+    try {
+      await _reloadSummary(month: month);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _status = '加载摘要失败：${_formatError(error)}';
+      });
+    }
+  }
+
   Future<void> _autoSyncIfNeeded({
     bool showLastSyncWhenNoAction = false,
   }) async {
@@ -276,7 +289,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         return;
       }
       _profile = repo.profile;
-      await _reloadSummary(month: _summary?.selectedMonth);
+      await _reloadSummarySafe(month: _summary?.selectedMonth);
       if (!mounted) {
         return;
       }
@@ -343,7 +356,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         return;
       }
       _profile = repo.profile;
-      await _reloadSummary();
+      unawaited(_reloadSummarySafe());
       if (!mounted) {
         return;
       }
@@ -408,14 +421,12 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   String _formatError(Object error) {
     final text = error.toString();
-    if (text.startsWith('TimeoutException')) {
-      final idx = text.indexOf(':');
-      if (idx > -1 && idx + 1 < text.length) {
-        return text.substring(idx + 1).trim();
-      }
-      return '请求超时，请稍后重试。';
-    }
-    return text.replaceFirst(RegExp(r'^Exception:\s*'), '').trim();
+    final cleanedTimeout = text.replaceFirst(
+      RegExp(r'^TimeoutException(?: after [^:]+)?:\s*'),
+      '',
+    );
+    final cleaned = cleanedTimeout.replaceFirst(RegExp(r'^Exception:\s*'), '');
+    return cleaned.trim().isEmpty ? '未知错误' : cleaned.trim();
   }
 
   @override
