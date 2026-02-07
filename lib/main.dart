@@ -445,19 +445,21 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     if (_booting) {
       return Scaffold(
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                const CircularProgressIndicator(),
-                const SizedBox(height: 14),
-                Text(
-                  _status.isEmpty ? '正在启动...' : _status,
-                  textAlign: TextAlign.center,
-                ),
-              ],
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 14),
+                  Text(
+                    _status.isEmpty ? '正在启动...' : _status,
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -466,27 +468,29 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
     if (_repository == null) {
       return Scaffold(
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Text(
-                  _status.isEmpty ? '初始化失败。' : _status,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 14),
-                FilledButton(
-                  onPressed: _retryBootstrap,
-                  child: const Text('重试启动'),
-                ),
-                const SizedBox(height: 8),
-                OutlinedButton(
-                  onPressed: _clearLocalAndRetry,
-                  child: const Text('清空本地数据后重试'),
-                ),
-              ],
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Text(
+                    _status.isEmpty ? '初始化失败。' : _status,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 14),
+                  FilledButton(
+                    onPressed: _retryBootstrap,
+                    child: const Text('重试启动'),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton(
+                    onPressed: _clearLocalAndRetry,
+                    child: const Text('清空本地数据后重试'),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -515,20 +519,23 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     );
 
     return Scaffold(
-      body: Stack(
-        children: <Widget>[
-          body,
-          if (_needsSetup)
-            Positioned.fill(
-              child: _SetupOverlay(
-                sidController: _sidController,
-                passwordController: _passwordController,
-                submitting: _settingUp,
-                statusMessage: _status,
-                onSubmit: _setupAccount,
+      body: SafeArea(
+        bottom: false,
+        child: Stack(
+          children: <Widget>[
+            body,
+            if (_needsSetup)
+              Positioned.fill(
+                child: _SetupOverlay(
+                  sidController: _sidController,
+                  passwordController: _passwordController,
+                  submitting: _settingUp,
+                  statusMessage: _status,
+                  onSubmit: _setupAccount,
+                ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
       floatingActionButton: _tabIndex == 0 && !_needsSetup
           ? FloatingActionButton.extended(
