@@ -181,25 +181,31 @@ class CanteenRepository {
 
       unawaited(_saveSelectedMonthNonBlocking(selectedMonth));
 
-      final dailyRows = await _withTimeout(
-        () => _database.queryDailyTotals(
+      final selectedRows = await _withTimeout(
+        () => _database.queryByDayRange(
           sid: sid,
           startDate: selectedStart,
           endDate: selectedEnd,
         ),
-        step: 'db.queryDailyTotals',
+        step: 'db.queryByDayRange(selected)',
       );
 
       final dayMap = <String, DailySpending>{};
-      for (final row in dailyRows) {
-        final day = (row['day'] ?? '').toString();
-        if (day.isEmpty) {
+      for (final row in selectedRows) {
+        final day = row.occurredDay;
+        final current = dayMap[day];
+        if (current == null) {
+          dayMap[day] = DailySpending(
+            day: day,
+            totalAmount: row.amount.abs(),
+            txnCount: 1,
+          );
           continue;
         }
         dayMap[day] = DailySpending(
           day: day,
-          totalAmount: _toDouble(row['total_amount']).abs(),
-          txnCount: _toInt(row['txn_count']),
+          totalAmount: current.totalAmount + row.amount.abs(),
+          txnCount: current.txnCount + 1,
         );
       }
 
@@ -212,33 +218,47 @@ class CanteenRepository {
           )
           .toList();
 
-      final recent = await _withTimeout(
-        () => _database.queryRecent(sid: sid, limit: 20),
-        step: 'db.queryRecent',
-      );
-
-      final monthRows = await _withTimeout(
-        () => _database.queryMonthlyTotals(
+      final historyRows = await _withTimeout(
+        () => _database.queryByDayRange(
           sid: sid,
           startDate: historyStart,
           endDate: historyEnd,
         ),
-        step: 'db.queryMonthlyTotals',
+        step: 'db.queryByDayRange(history)',
       );
       final monthMap = <String, MonthOverview>{};
-      for (final row in monthRows) {
-        final month = (row['month'] ?? '').toString();
-        if (month.isEmpty) {
+      for (final row in historyRows) {
+        if (row.occurredDay.length < 7) {
           continue;
         }
-        final txnCount = _toInt(row['txn_count']);
+        final month = row.occurredDay.substring(0, 7);
+        final current = monthMap[month];
+        if (current == null) {
+          monthMap[month] = MonthOverview(
+            month: month,
+            totalAmount: row.amount.abs(),
+            txnCount: 1,
+            hasData: true,
+          );
+          continue;
+        }
         monthMap[month] = MonthOverview(
           month: month,
-          totalAmount: _toDouble(row['total_amount']).abs(),
-          txnCount: txnCount,
-          hasData: txnCount > 0,
+          totalAmount: current.totalAmount + row.amount.abs(),
+          txnCount: current.txnCount + 1,
+          hasData: true,
         );
       }
+
+      final recent = historyRows.toList()
+        ..sort((a, b) {
+          final byTime = b.occurredAt.compareTo(a.occurredAt);
+          if (byTime != 0) {
+            return byTime;
+          }
+          return b.txnId.compareTo(a.txnId);
+        });
+      final recentTop20 = recent.take(20).toList();
 
       final availableMonths = monthsBetween(earliestMonth, currentMonth)
           .map(
@@ -263,7 +283,7 @@ class CanteenRepository {
       );
 
       _logInfo(
-        'loadSummary done month=$selectedMonth daily=${daily.length} recent=${recent.length} monthRows=${monthRows.length}',
+        'loadSummary done month=$selectedMonth daily=${daily.length} recent=${recentTop20.length} history=${historyRows.length}',
       );
       return HomeSummary(
         selectedMonth: selectedMonth,
@@ -272,7 +292,7 @@ class CanteenRepository {
         days: monthDays(selectedMonth),
         availableMonths: availableMonths,
         daily: daily,
-        recent: recent,
+        recent: recentTop20,
         totalAmount: totalAmount,
         transactionCount: transactionCount,
         currentBalance: _storage.currentBalance,
@@ -312,25 +332,6 @@ class CanteenRepository {
   int _monthToDateLookbackDays() {
     final day = shanghaiNow().day;
     return day < 1 ? 1 : day;
-  }
-
-  double _toDouble(Object? value) {
-    if (value is num) {
-      final parsed = value.toDouble();
-      return parsed.isFinite ? parsed : 0;
-    }
-    final parsed = double.tryParse(value?.toString() ?? '');
-    if (parsed == null || !parsed.isFinite) {
-      return 0;
-    }
-    return parsed;
-  }
-
-  int _toInt(Object? value) {
-    if (value is num) {
-      return value.toInt();
-    }
-    return int.tryParse(value?.toString() ?? '') ?? 0;
   }
 
   Future<void> _saveSelectedMonthNonBlocking(String month) async {

@@ -105,6 +105,20 @@ class LocalDatabaseService {
     );
   }
 
+  Future<List<TransactionRecord>> queryByDayRange({
+    required String sid,
+    required String startDate,
+    required String endDate,
+  }) async {
+    final rows = await db.query(
+      'transactions',
+      where: 'sid = ? AND occurred_day BETWEEN ? AND ?',
+      whereArgs: <Object?>[sid, startDate, endDate],
+      orderBy: 'occurred_at ASC, txn_id ASC',
+    );
+    return rows.map(TransactionRecord.fromDbMap).toList();
+  }
+
   Future<List<Map<String, Object?>>> queryMonthlyTotals({
     required String sid,
     required String startDate,
