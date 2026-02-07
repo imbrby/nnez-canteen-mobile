@@ -142,6 +142,24 @@ class SettingsPage extends StatelessWidget {
                       label: const Text('复制路径'),
                     ),
                     OutlinedButton.icon(
+                      onPressed: () async {
+                        final text = await AppLogService.instance.readRecent(
+                          maxLines: 300,
+                        );
+                        await Clipboard.setData(
+                          ClipboardData(text: text.isEmpty ? '日志为空' : text),
+                        );
+                        if (!context.mounted) {
+                          return;
+                        }
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('最近日志已复制')),
+                        );
+                      },
+                      icon: const Icon(Icons.description_outlined),
+                      label: const Text('复制最近日志'),
+                    ),
+                    OutlinedButton.icon(
                       onPressed: () {
                         final messenger = ScaffoldMessenger.of(context);
                         unawaited(

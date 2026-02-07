@@ -20,8 +20,7 @@ class AppLogService {
     if (_initialized) {
       return;
     }
-    final root = await getApplicationDocumentsDirectory();
-    final logsDir = Directory(path.join(root.path, 'logs'));
+    final logsDir = await _resolveLogDirectory();
     if (!await logsDir.exists()) {
       await logsDir.create(recursive: true);
     }
@@ -70,6 +69,23 @@ class AppLogService {
     await info('日志已清空', tag: 'LOG');
   }
 
+  Future<String> readRecent({int maxLines = 300}) async {
+    final file = _logFile;
+    if (file == null || !await file.exists()) {
+      return '';
+    }
+    final raw = await file.readAsString();
+    if (raw.isEmpty) {
+      return '';
+    }
+    final lines = raw.split('\n');
+    if (lines.length <= maxLines) {
+      return raw;
+    }
+    final start = lines.length - maxLines;
+    return lines.sublist(start).join('\n');
+  }
+
   Future<void> _write({
     required String level,
     required String tag,
@@ -102,6 +118,19 @@ class AppLogService {
       await backup.delete();
     }
     await file.rename(backup.path);
+  }
+
+  Future<Directory> _resolveLogDirectory() async {
+    try {
+      final external = await getExternalStorageDirectory();
+      if (external != null) {
+        return Directory(path.join(external.path, 'logs'));
+      }
+    } catch (_) {
+      // fallback to internal documents directory
+    }
+    final internal = await getApplicationDocumentsDirectory();
+    return Directory(path.join(internal.path, 'logs'));
   }
 
   Future<void> _enqueue(Future<void> Function() action) {
