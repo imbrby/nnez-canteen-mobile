@@ -13,6 +13,8 @@ class CanteenRepository {
 
   static const int _initCheckLookbackDays = 3;
   static const int _autoSyncLookbackDays = 1;
+  static final Map<String, List<TransactionRecord>> _volatileRowsBySid =
+      <String, List<TransactionRecord>>{};
 
   final LocalStorageService _storage;
   final CampusApiClient _apiClient;
@@ -136,12 +138,10 @@ class CanteenRepository {
       timeout: const Duration(seconds: 6),
     );
     if (includeTransactions) {
+      _logInfo('syncNow about to notify progress: 写入本地数据');
       onProgress?.call('正在写入本地数据...');
-      await _withTimeout(
-        () => _storage.saveTransactions(sid, payload.transactions),
-        step: 'sync.storage.saveTransactions',
-        timeout: const Duration(seconds: 20),
-      );
+      _logInfo('syncNow progress callback returned: 写入本地数据');
+      await _saveTransactionsBestEffort(sid, payload.transactions);
     }
     onProgress?.call('正在保存同步信息...');
     await _withTimeout(
@@ -195,8 +195,13 @@ class CanteenRepository {
       unawaited(_saveSelectedMonthNonBlocking(selectedMonth));
 
       final allRows = _storage.loadTransactions(sid);
-      _logInfo('allRows loaded from storage: ${allRows.length}');
-      final selectedRows = allRows
+      final effectiveRows = allRows.isNotEmpty
+          ? allRows
+          : (_volatileRowsBySid[sid] ?? <TransactionRecord>[]);
+      _logInfo(
+        'allRows loaded from storage: ${allRows.length}, volatile: ${(_volatileRowsBySid[sid] ?? <TransactionRecord>[]).length}',
+      );
+      final selectedRows = effectiveRows
           .where(
             (row) => _dayInRange(row.occurredDay, selectedStart, selectedEnd),
           )
@@ -233,7 +238,7 @@ class CanteenRepository {
           .toList();
       _logInfo('daily series built: ${daily.length}');
 
-      final historyRows = allRows
+      final historyRows = effectiveRows
           .where(
             (row) => _dayInRange(row.occurredDay, historyStart, historyEnd),
           )
@@ -392,6 +397,27 @@ class CanteenRepository {
         stackTrace: stackTrace,
       ),
     );
+  }
+
+  Future<void> _saveTransactionsBestEffort(
+    String sid,
+    List<TransactionRecord> rows,
+  ) async {
+    _volatileRowsBySid[sid] = List<TransactionRecord>.from(rows);
+    try {
+      await _withTimeout(
+        () => _storage.saveTransactions(sid, rows),
+        step: 'sync.storage.saveTransactions',
+        timeout: const Duration(seconds: 3),
+      );
+      _logInfo('saveTransactions persisted rows=${rows.length}');
+    } catch (error, stackTrace) {
+      _logError(
+        'saveTransactions fallback to volatile cache',
+        error,
+        stackTrace,
+      );
+    }
   }
 
   bool _dayInRange(String day, String startDay, String endDay) {
