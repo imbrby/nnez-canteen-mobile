@@ -339,26 +339,26 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     });
 
     try {
-      await repo
-          .syncNow(
-            includeTransactions: includeTransactions,
-            lookbackDays: lookbackDays,
-            onProgress: (message) {
-              if (!mounted) {
-                return;
-              }
-              _logInfo('刷新进度: $message');
-              setState(() {
-                _status = message;
-              });
-            },
-          )
-          .timeout(
-            Duration(seconds: includeTransactions ? 120 : 40),
-            onTimeout: () {
-              throw TimeoutException(auto ? '自动刷新超时，稍后可手动重试。' : '刷新超时，请稍后重试。');
-            },
-          );
+      final syncFuture = repo.syncNow(
+        includeTransactions: includeTransactions,
+        lookbackDays: lookbackDays,
+        onProgress: (message) {
+          if (!mounted) {
+            return;
+          }
+          _logInfo('刷新进度: $message');
+          setState(() {
+            _status = message;
+          });
+        },
+      );
+      final watchdog = Future<void>.delayed(
+        Duration(seconds: includeTransactions ? 25 : 15),
+        () {
+          throw TimeoutException(auto ? '自动刷新超时，稍后可手动重试。' : '刷新超时，请稍后重试。');
+        },
+      );
+      await Future.any<void>(<Future<void>>[syncFuture, watchdog]);
       if (!mounted) {
         return;
       }

@@ -36,11 +36,11 @@ class CampusApiClient {
     final session = _CampusSession();
 
     try {
-      onProgress?.call('正在建立会话...');
+      _emitProgress(onProgress, '正在建立会话...');
       await _bootstrapSession(dio, session);
       _logInfo('session bootstrap ok cookies=${session.cookieCount}');
 
-      onProgress?.call('正在初始化验证码会话...');
+      _emitProgress(onProgress, '正在初始化验证码会话...');
       await _waitRandom(160, 420);
       final authTypeResp = await _postForm(
         dio: dio,
@@ -67,7 +67,7 @@ class CampusApiClient {
       }
       _logInfo('GET verify code done');
 
-      onProgress?.call('正在登录账号...');
+      _emitProgress(onProgress, '正在登录账号...');
       final encodedPassword = base64Encode(utf8.encode(plainPassword));
       final loginResp = await _postForm(
         dio: dio,
@@ -92,7 +92,7 @@ class CampusApiClient {
 
       List<dynamic> rawData = <dynamic>[];
       if (includeTransactions) {
-        onProgress?.call('正在拉取消费流水...');
+        _emitProgress(onProgress, '正在拉取消费流水...');
         await _waitRandom(280, 840);
         final recordsResp = await _postForm(
           dio: dio,
@@ -119,19 +119,19 @@ class CampusApiClient {
         _logInfo('transactions fetched rows=${rawData.length}');
       }
 
-      onProgress?.call('正在查询余额...');
+      _emitProgress(onProgress, '正在查询余额...');
       final balance = await _fetchBalance(dio, session, sid);
       _logInfo('balance fetched value=${balance.toStringAsFixed(2)}');
 
-      onProgress?.call('正在获取个人信息...');
+      _emitProgress(onProgress, '正在获取个人信息...');
       final profile = await _fetchProfile(dio, session);
       _logInfo(
         'profile fetched sid=${profile.sid} name=${profile.studentName}',
       );
 
-      onProgress?.call('正在整理数据...');
+      _emitProgress(onProgress, '正在整理数据...');
       final rows = includeTransactions
-          ? await _toRecords(sid: sid, rawList: rawData, onProgress: onProgress)
+          ? await _toRecords(sid: sid, rawList: rawData)
           : <TransactionRecord>[];
       _logInfo('records normalized rows=${rows.length}');
 
@@ -276,18 +276,15 @@ class CampusApiClient {
   Future<List<TransactionRecord>> _toRecords({
     required String sid,
     required List<dynamic> rawList,
-    void Function(String message)? onProgress,
   }) async {
     _logInfo('_toRecords start sid=$sid raw=${rawList.length}');
     final records = <TransactionRecord>[];
-    final total = rawList.length;
     var index = 0;
 
     for (final row in rawList) {
       index += 1;
       if (row is! Map<String, dynamic>) {
         if (index % 100 == 0) {
-          onProgress?.call('正在整理数据...$index/$total');
           await Future<void>.delayed(Duration.zero);
         }
         continue;
@@ -298,7 +295,6 @@ class CampusApiClient {
         records.add(normalized);
       }
       if (index % 100 == 0) {
-        onProgress?.call('正在整理数据...$index/$total');
         await Future<void>.delayed(Duration.zero);
       }
     }
@@ -388,6 +384,22 @@ class CampusApiClient {
   Future<void> _waitRandom(int minMs, int maxMs) async {
     final value = minMs + Random().nextInt(maxMs - minMs + 1);
     await Future<void>.delayed(Duration(milliseconds: value));
+  }
+
+  void _emitProgress(
+    void Function(String message)? onProgress,
+    String message,
+  ) {
+    if (onProgress == null) {
+      return;
+    }
+    scheduleMicrotask(() {
+      try {
+        onProgress(message);
+      } catch (error, stackTrace) {
+        _logError('progress callback failed', error, stackTrace);
+      }
+    });
   }
 
   String _formatDioError(DioException error) {
