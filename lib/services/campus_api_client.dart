@@ -8,6 +8,7 @@ import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:mobile_app/models/campus_profile.dart';
 import 'package:mobile_app/models/campus_sync_payload.dart';
 import 'package:mobile_app/models/transaction_record.dart';
+import 'package:mobile_app/services/app_log_service.dart';
 
 class CampusApiClient {
   static const _baseUrl = 'http://xfxt.nnez.cn:455';
@@ -20,6 +21,10 @@ class CampusApiClient {
     bool includeTransactions = true,
     void Function(String message)? onProgress,
   }) async {
+    final watch = Stopwatch()..start();
+    _logInfo(
+      'fetchAll start sid=$sid includeTransactions=$includeTransactions range=$startDate~$endDate',
+    );
     try {
       onProgress?.call('正在建立会话...');
       final cookieJar = CookieJar();
@@ -33,6 +38,7 @@ class CampusApiClient {
         ),
       );
       dio.interceptors.add(CookieManager(cookieJar));
+      _logInfo('session created');
 
       await dio.get<void>(
         '/mobile/login',
@@ -42,6 +48,7 @@ class CampusApiClient {
           },
         ),
       );
+      _logInfo('GET /mobile/login done');
 
       final bootCookies = await cookieJar.loadForRequest(
         Uri.parse('$_baseUrl/mobile/login'),
@@ -52,15 +59,24 @@ class CampusApiClient {
       if (!hasSession) {
         throw Exception('未获取到 ASP.NET_SessionId，会话初始化失败。');
       }
+      _logInfo('session cookie ok count=${bootCookies.length}');
 
       onProgress?.call('正在初始化验证码会话...');
       await _waitRandom(280, 760);
+      _logInfo('random wait before auth type done');
 
-      await _postForm(dio, '/interface/index', <String, String>{
-        'method': 'loginauthtype',
-      }, refererPath: '/mobile/login');
+      final authTypeResp = await _postForm(
+        dio,
+        '/interface/index',
+        <String, String>{'method': 'loginauthtype'},
+        refererPath: '/mobile/login',
+      );
+      _logInfo(
+        'POST loginauthtype done status=${authTypeResp.statusCode ?? 0}',
+      );
 
       await _waitRandom(500, 1200);
+      _logInfo('random wait before verify image done');
 
       final verifyResp = await _get(
         dio,
@@ -72,6 +88,7 @@ class CampusApiClient {
       if (verifyResp.statusCode != 200) {
         throw Exception('验证码会话初始化失败 (${verifyResp.statusCode ?? 0})');
       }
+      _logInfo('GET verify code done');
 
       onProgress?.call('正在登录账号...');
       final encodedPassword = base64Encode(utf8.encode(plainPassword));
@@ -94,11 +111,13 @@ class CampusApiClient {
       if (!_isSuccess(loginJson)) {
         throw Exception('登录失败：${_extractMessage(loginJson)}');
       }
+      _logInfo('login success');
 
       List<dynamic> rawData = <dynamic>[];
       if (includeTransactions) {
         onProgress?.call('正在拉取消费流水...');
         await _waitRandom(600, 1500);
+        _logInfo('random wait before transactions done');
         final recordsResp =
             await _postForm(dio, '/interface/index', <String, String>{
               'method': 'getecardxfmx',
@@ -116,19 +135,27 @@ class CampusApiClient {
           throw Exception('查询流水失败：${_extractMessage(recordsJson)}');
         }
         rawData = parsed;
+        _logInfo('transactions fetched rows=${rawData.length}');
       }
 
       await _waitRandom(180, 500);
+      _logInfo('random wait before balance done');
 
       onProgress?.call('正在查询余额...');
       final balance = await _fetchBalance(dio, sid);
+      _logInfo('balance fetched value=${balance.toStringAsFixed(2)}');
       onProgress?.call('正在获取个人信息...');
       final profile = await _fetchProfile(dio);
+      _logInfo(
+        'profile fetched sid=${profile.sid} name=${profile.studentName}',
+      );
       onProgress?.call('正在整理数据...');
       final rows = includeTransactions
           ? await _toRecords(sid: sid, rawList: rawData, onProgress: onProgress)
           : <TransactionRecord>[];
+      _logInfo('records normalized rows=${rows.length}');
 
+      _logInfo('fetchAll done ${watch.elapsedMilliseconds}ms');
       return CampusSyncPayload(
         profile: profile,
         transactions: rows,
@@ -136,9 +163,14 @@ class CampusApiClient {
         balanceUpdatedAt: DateTime.now(),
       );
     } on DioException catch (error) {
+      _logError('fetchAll dio error', error, error.stackTrace);
       throw Exception(_formatDioError(error));
     } on FormatException {
+      _logInfo('fetchAll format exception');
       throw Exception('服务器返回数据格式异常，请稍后重试。');
+    } catch (error, stackTrace) {
+      _logError('fetchAll unexpected error', error, stackTrace);
+      rethrow;
     }
   }
 
@@ -189,6 +221,7 @@ class CampusApiClient {
   }
 
   Future<double> _fetchBalance(Dio dio, String sid) async {
+    _logInfo('fetchBalance start sid=$sid');
     final response = await _postForm(dio, '/interface/index', <String, String>{
       'method': 'getecardyue',
       'carno': sid,
@@ -201,10 +234,12 @@ class CampusApiClient {
     if (value == null) {
       throw Exception('查询余额失败：余额格式异常。');
     }
+    _logInfo('fetchBalance done');
     return value;
   }
 
   Future<CampusProfile> _fetchProfile(Dio dio) async {
+    _logInfo('fetchProfile start');
     final response = await _postForm(dio, '/interface/index', <String, String>{
       'method': 'getinfo',
       'stuid': '1',
@@ -217,6 +252,7 @@ class CampusApiClient {
     if (data is! Map<String, dynamic>) {
       throw Exception('获取用户信息失败：返回数据格式错误。');
     }
+    _logInfo('fetchProfile done');
     return CampusProfile.fromRemote(data);
   }
 
@@ -225,6 +261,7 @@ class CampusApiClient {
     required List<dynamic> rawList,
     void Function(String message)? onProgress,
   }) async {
+    _logInfo('_toRecords start sid=$sid raw=${rawList.length}');
     final records = <TransactionRecord>[];
     final total = rawList.length;
     var index = 0;
@@ -246,6 +283,7 @@ class CampusApiClient {
         await Future<void>.delayed(Duration.zero);
       }
     }
+    _logInfo('_toRecords done rows=${records.length}');
     return records;
   }
 
@@ -346,5 +384,20 @@ class CampusApiClient {
       return '网络请求失败（HTTP $statusCode）。';
     }
     return '网络请求失败，请稍后重试。';
+  }
+
+  void _logInfo(String message) {
+    unawaited(AppLogService.instance.info(message, tag: 'API'));
+  }
+
+  void _logError(String context, Object error, StackTrace stackTrace) {
+    unawaited(
+      AppLogService.instance.error(
+        context,
+        tag: 'API',
+        error: error,
+        stackTrace: stackTrace,
+      ),
+    );
   }
 }
