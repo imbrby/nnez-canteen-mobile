@@ -230,10 +230,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       }
       return;
     }
-    await _syncNow(auto: true);
+    await _syncNow(auto: true, includeTransactions: false);
   }
 
-  Future<void> _syncNow({required bool auto}) async {
+  Future<void> _syncNow({
+    required bool auto,
+    bool includeTransactions = true,
+  }) async {
     final repo = _repository;
     if (repo == null || !repo.hasCredential || _settingUp || _syncing) {
       return;
@@ -241,12 +244,15 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
     setState(() {
       _syncing = true;
-      _status = auto ? '今日首次进入，正在自动刷新...' : '正在刷新...';
+      _status = auto
+          ? (includeTransactions ? '今日首次进入，正在自动刷新...' : '今日首次进入，正在快速刷新...')
+          : '正在刷新...';
     });
 
     try {
       await repo
           .syncNow(
+            includeTransactions: includeTransactions,
             onProgress: (message) {
               if (!mounted) {
                 return;
@@ -257,9 +263,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             },
           )
           .timeout(
-            const Duration(seconds: 120),
+            Duration(seconds: includeTransactions ? 120 : 40),
             onTimeout: () {
-              throw TimeoutException(auto ? '自动刷新超时，稍后可手动重试。' : '刷新超时，请稍后重试。');
+              throw TimeoutException(
+                auto
+                    ? (includeTransactions ? '自动刷新超时，稍后可手动重试。' : '快速刷新超时，稍后重试。')
+                    : '刷新超时，请稍后重试。',
+              );
             },
           );
       if (!mounted) {
@@ -271,7 +281,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         return;
       }
       setState(() {
-        _status = '刷新完成。';
+        _status = includeTransactions ? '刷新完成。' : '快速刷新完成。';
       });
     } catch (error) {
       if (!mounted) {
@@ -309,7 +319,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       _status = '正在初始化账号...';
     });
 
-    var initialized = false;
     try {
       await repo
           .initializeAccount(
@@ -341,9 +350,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       _sidController.clear();
       _passwordController.clear();
       setState(() {
-        _status = '初始化完成，正在后台同步消费数据...';
+        _status = '初始化完成。可进入主页，稍后点右下角刷新同步消费记录。';
       });
-      initialized = true;
     } catch (error) {
       if (!mounted) {
         return;
@@ -357,14 +365,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           _settingUp = false;
         });
       }
-    }
-
-    if (initialized) {
-      unawaited(
-        Future<void>.delayed(const Duration(milliseconds: 300), () async {
-          await _syncNow(auto: false);
-        }),
-      );
     }
   }
 
@@ -586,7 +586,7 @@ class _SetupOverlay extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '首次使用请填写食堂账号和原密码。初始化完成后会在后台同步近四个月数据。',
+                      '首次使用请填写食堂账号和原密码。初始化后可先使用，再手动刷新消费记录。',
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                     if (statusMessage.isNotEmpty) ...<Widget>[

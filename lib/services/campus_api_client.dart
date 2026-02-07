@@ -126,7 +126,7 @@ class CampusApiClient {
       final profile = await _fetchProfile(dio);
       onProgress?.call('正在整理数据...');
       final rows = includeTransactions
-          ? _toRecords(sid: sid, rawList: rawData)
+          ? await _toRecords(sid: sid, rawList: rawData, onProgress: onProgress)
           : <TransactionRecord>[];
 
       return CampusSyncPayload(
@@ -220,18 +220,30 @@ class CampusApiClient {
     return CampusProfile.fromRemote(data);
   }
 
-  List<TransactionRecord> _toRecords({
+  Future<List<TransactionRecord>> _toRecords({
     required String sid,
     required List<dynamic> rawList,
-  }) {
+    void Function(String message)? onProgress,
+  }) async {
     final records = <TransactionRecord>[];
+    final total = rawList.length;
+    var index = 0;
     for (final row in rawList) {
+      index += 1;
       if (row is! Map<String, dynamic>) {
+        if (index % 200 == 0) {
+          onProgress?.call('正在整理数据...$index/$total');
+          await Future<void>.delayed(Duration.zero);
+        }
         continue;
       }
       final normalized = _normalizeRow(sid, row);
       if (normalized != null) {
         records.add(normalized);
+      }
+      if (index % 200 == 0) {
+        onProgress?.call('正在整理数据...$index/$total');
+        await Future<void>.delayed(Duration.zero);
       }
     }
     return records;

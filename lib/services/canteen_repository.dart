@@ -8,7 +8,9 @@ import 'package:mobile_app/services/local_storage_service.dart';
 class CanteenRepository {
   CanteenRepository._(this._storage, this._database, this._apiClient);
 
-  static const int _syncLookbackDays = 120;
+  static const int _initCheckLookbackDays = 3;
+  static const int _manualSyncLookbackDays = 30;
+  static const int _autoSyncLookbackDays = 1;
 
   final LocalStorageService _storage;
   final LocalDatabaseService _database;
@@ -38,7 +40,7 @@ class CanteenRepository {
       throw Exception('请输入食堂账号和密码。');
     }
 
-    final range = _buildSyncRange();
+    final range = _buildSyncRange(_initCheckLookbackDays);
     final payload = await _apiClient.fetchAll(
       sid: normalizedSid,
       plainPassword: password,
@@ -59,30 +61,41 @@ class CanteenRepository {
     );
   }
 
-  Future<void> syncNow({void Function(String message)? onProgress}) async {
+  Future<void> syncNow({
+    void Function(String message)? onProgress,
+    bool includeTransactions = true,
+    int? lookbackDays,
+  }) async {
     if (!hasCredential) {
       throw Exception('请先在设置中初始化账号。');
     }
     final sid = _storage.campusSid;
     final password = _storage.campusPassword;
-    final range = _buildSyncRange();
+    final range = _buildSyncRange(
+      lookbackDays ??
+          (includeTransactions
+              ? _manualSyncLookbackDays
+              : _autoSyncLookbackDays),
+    );
 
     final payload = await _apiClient.fetchAll(
       sid: sid,
       plainPassword: password,
       startDate: range.startDate,
       endDate: range.endDate,
-      includeTransactions: true,
+      includeTransactions: includeTransactions,
       onProgress: onProgress,
     );
 
-    onProgress?.call('正在写入本地数据...');
     await _storage.saveProfile(payload.profile);
-    await _database.upsertTransactions(
-      sid,
-      payload.transactions,
-      onProgress: onProgress,
-    );
+    if (includeTransactions) {
+      onProgress?.call('正在写入本地数据...');
+      await _database.upsertTransactions(
+        sid,
+        payload.transactions,
+        onProgress: onProgress,
+      );
+    }
     await _storage.saveSyncMeta(
       balance: payload.balance,
       balanceUpdatedAt: payload.balanceUpdatedAt.toIso8601String(),
@@ -218,11 +231,11 @@ class CanteenRepository {
     return _database.close();
   }
 
-  ({String startDate, String endDate}) _buildSyncRange() {
+  ({String startDate, String endDate}) _buildSyncRange(int lookbackDays) {
     final now = shanghaiNow();
     return (
       startDate: formatShanghaiDay(
-        now.subtract(Duration(days: _syncLookbackDays - 1)),
+        now.subtract(Duration(days: lookbackDays - 1)),
       ),
       endDate: formatShanghaiDay(now),
     );
