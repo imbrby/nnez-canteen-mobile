@@ -160,12 +160,12 @@ class CanteenRepository {
     _volatileBalance = payload.balance;
     _volatileBalanceUpdatedAt = payload.balanceUpdatedAt.toIso8601String();
     _logInfo('syncNow fetched payload txns=${payload.transactions.length}');
-    unawaited(_saveProfileBestEffort(payload.profile));
+    await _saveProfileBestEffort(payload.profile);
     if (includeTransactions) {
-      _logInfo('syncNow about to notify progress: 写入本地数据');
+      _logInfo('syncNow about to upsert transactions');
       onProgress?.call('正在写入本地数据...');
-      _logInfo('syncNow progress callback returned: 写入本地数据');
       await _saveTransactionsBestEffort(sid, payload.transactions);
+      _logInfo('syncNow upsert transactions done');
     }
     onProgress?.call('正在保存同步信息...');
     final nowIso = DateTime.now().toIso8601String();
