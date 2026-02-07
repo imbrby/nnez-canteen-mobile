@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:mobile_app/models/transaction_record.dart';
@@ -6,12 +8,21 @@ import 'package:sqflite/sqflite.dart';
 class LocalDatabaseService {
   Database? _db;
 
+  static Future<String> resolveDatabasePath() async {
+    final baseDir = await getApplicationDocumentsDirectory();
+    return path.join(baseDir.path, 'canteen_local.db');
+  }
+
+  static Future<void> deleteDatabaseFile() async {
+    final dbPath = await resolveDatabasePath();
+    await deleteDatabase(dbPath);
+  }
+
   Future<void> init() async {
     if (_db != null) {
       return;
     }
-    final baseDir = await getApplicationDocumentsDirectory();
-    final dbPath = path.join(baseDir.path, 'canteen_local.db');
+    final dbPath = await resolveDatabasePath();
     _db = await openDatabase(
       dbPath,
       version: 1,
@@ -50,20 +61,33 @@ class LocalDatabaseService {
 
   Future<void> upsertTransactions(
     String sid,
-    List<TransactionRecord> rows,
-  ) async {
+    List<TransactionRecord> rows, {
+    void Function(String message)? onProgress,
+  }) async {
     if (rows.isEmpty) {
       return;
     }
-    final batch = db.batch();
-    for (final row in rows) {
-      batch.insert(
-        'transactions',
-        row.toDbMap(),
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+
+    const chunkSize = 250;
+    var processed = 0;
+
+    while (processed < rows.length) {
+      final end = (processed + chunkSize > rows.length)
+          ? rows.length
+          : processed + chunkSize;
+      final batch = db.batch();
+      for (var i = processed; i < end; i += 1) {
+        batch.insert(
+          'transactions',
+          rows[i].toDbMap(),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+      await batch.commit(noResult: true);
+      processed = end;
+      onProgress?.call('正在写入本地数据...$processed/${rows.length}');
+      await Future<void>.delayed(Duration.zero);
     }
-    await batch.commit(noResult: true);
   }
 
   Future<List<Map<String, Object?>>> queryDailyTotals({

@@ -264,7 +264,7 @@ class CampusApiClient {
       itemName: (row['ItemName'] ?? '').toString().trim().isEmpty
           ? '未知消费点'
           : (row['ItemName'] ?? '').toString().trim(),
-      rawPayload: jsonEncode(row),
+      rawPayload: '{}',
     );
   }
 

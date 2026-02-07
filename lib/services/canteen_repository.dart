@@ -8,6 +8,8 @@ import 'package:mobile_app/services/local_storage_service.dart';
 class CanteenRepository {
   CanteenRepository._(this._storage, this._database, this._apiClient);
 
+  static const int _syncLookbackDays = 120;
+
   final LocalStorageService _storage;
   final LocalDatabaseService _database;
   final CampusApiClient _apiClient;
@@ -35,16 +37,18 @@ class CanteenRepository {
     if (normalizedSid.isEmpty || password.isEmpty) {
       throw Exception('请输入食堂账号和密码。');
     }
-    final now = shanghaiNow();
+
+    final range = _buildSyncRange();
     final payload = await _apiClient.fetchAll(
       sid: normalizedSid,
       plainPassword: password,
-      startDate: formatShanghaiDay(now.subtract(const Duration(days: 364))),
-      endDate: formatShanghaiDay(now),
+      startDate: range.startDate,
+      endDate: range.endDate,
       includeTransactions: false,
       onProgress: onProgress,
     );
 
+    onProgress?.call('正在保存账号信息...');
     await _storage.saveCredentials(sid: normalizedSid, password: password);
     await _storage.saveProfile(payload.profile);
     await _storage.saveSyncMeta(
@@ -61,19 +65,24 @@ class CanteenRepository {
     }
     final sid = _storage.campusSid;
     final password = _storage.campusPassword;
+    final range = _buildSyncRange();
 
-    final now = shanghaiNow();
     final payload = await _apiClient.fetchAll(
       sid: sid,
       plainPassword: password,
-      startDate: formatShanghaiDay(now.subtract(const Duration(days: 364))),
-      endDate: formatShanghaiDay(now),
+      startDate: range.startDate,
+      endDate: range.endDate,
       includeTransactions: true,
       onProgress: onProgress,
     );
 
+    onProgress?.call('正在写入本地数据...');
     await _storage.saveProfile(payload.profile);
-    await _database.upsertTransactions(sid, payload.transactions);
+    await _database.upsertTransactions(
+      sid,
+      payload.transactions,
+      onProgress: onProgress,
+    );
     await _storage.saveSyncMeta(
       balance: payload.balance,
       balanceUpdatedAt: payload.balanceUpdatedAt.toIso8601String(),
@@ -207,6 +216,16 @@ class CanteenRepository {
 
   Future<void> close() {
     return _database.close();
+  }
+
+  ({String startDate, String endDate}) _buildSyncRange() {
+    final now = shanghaiNow();
+    return (
+      startDate: formatShanghaiDay(
+        now.subtract(Duration(days: _syncLookbackDays - 1)),
+      ),
+      endDate: formatShanghaiDay(now),
+    );
   }
 
   String _resolveMonth({

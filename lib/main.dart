@@ -7,6 +7,8 @@ import 'package:mobile_app/models/home_summary.dart';
 import 'package:mobile_app/pages/home_page.dart';
 import 'package:mobile_app/pages/settings_page.dart';
 import 'package:mobile_app/services/canteen_repository.dart';
+import 'package:mobile_app/services/local_database_service.dart';
+import 'package:mobile_app/services/local_storage_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -57,6 +59,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   HomeSummary? _summary;
   CampusProfile? _profile;
 
+  Timer? _bootWatchdog;
   bool _booting = true;
   bool _syncing = false;
   bool _settingUp = false;
@@ -67,12 +70,14 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _startBootWatchdog();
     _bootstrap();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _bootWatchdog?.cancel();
     _sidController.dispose();
     _passwordController.dispose();
     _repository?.close();
@@ -89,6 +94,19 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   bool get _needsSetup {
     final repo = _repository;
     return repo != null && !repo.hasCredential;
+  }
+
+  void _startBootWatchdog() {
+    _bootWatchdog?.cancel();
+    _bootWatchdog = Timer(const Duration(seconds: 25), () {
+      if (!mounted || !_booting) {
+        return;
+      }
+      setState(() {
+        _booting = false;
+        _status = '启动超时，请点击重试。';
+      });
+    });
   }
 
   Future<void> _bootstrap() async {
@@ -116,6 +134,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         _status = '初始化失败：${_formatError(error)}';
       });
     } finally {
+      _bootWatchdog?.cancel();
       if (mounted) {
         setState(() {
           _booting = false;
@@ -123,6 +142,56 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       }
       unawaited(_autoSyncIfNeeded(showLastSyncWhenNoAction: true));
     }
+  }
+
+  Future<void> _retryBootstrap() async {
+    if (_syncing || _settingUp) {
+      return;
+    }
+    await _repository?.close();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _repository = null;
+      _summary = null;
+      _profile = null;
+      _booting = true;
+      _status = '';
+    });
+    _startBootWatchdog();
+    await _bootstrap();
+  }
+
+  Future<void> _clearLocalAndRetry() async {
+    if (_syncing || _settingUp) {
+      return;
+    }
+    setState(() {
+      _booting = true;
+      _status = '正在清理本地数据...';
+    });
+
+    try {
+      await _repository?.close();
+      final storage = await LocalStorageService.create();
+      await storage.clearAll();
+      await LocalDatabaseService.deleteDatabaseFile();
+    } catch (_) {
+      // ignore cleanup error and continue retry.
+    }
+
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _repository = null;
+      _summary = null;
+      _profile = null;
+      _status = '';
+    });
+    _startBootWatchdog();
+    await _bootstrap();
   }
 
   Future<void> _reloadSummary({String? month}) async {
@@ -188,7 +257,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             },
           )
           .timeout(
-            const Duration(seconds: 90),
+            const Duration(seconds: 120),
             onTimeout: () {
               throw TimeoutException(auto ? '自动刷新超时，稍后可手动重试。' : '刷新超时，请稍后重试。');
             },
@@ -256,7 +325,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             },
           )
           .timeout(
-            const Duration(seconds: 60),
+            const Duration(seconds: 70),
             onTimeout: () {
               throw TimeoutException('初始化超时，请检查网络后重试。');
             },
@@ -289,8 +358,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         });
       }
     }
+
     if (initialized) {
-      unawaited(_syncNow(auto: false));
+      unawaited(
+        Future<void>.delayed(const Duration(milliseconds: 300), () async {
+          await _syncNow(auto: false);
+        }),
+      );
     }
   }
 
@@ -334,14 +408,39 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   String _formatError(Object error) {
     final text = error.toString();
-    return text.replaceFirst(RegExp(r'^(Exception|TimeoutException):\s*'), '');
+    if (text.startsWith('TimeoutException')) {
+      final idx = text.indexOf(':');
+      if (idx > -1 && idx + 1 < text.length) {
+        return text.substring(idx + 1).trim();
+      }
+      return '请求超时，请稍后重试。';
+    }
+    return text.replaceFirst(RegExp(r'^Exception:\s*'), '').trim();
   }
 
   @override
   Widget build(BuildContext context) {
     if (_booting) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                const CircularProgressIndicator(),
+                const SizedBox(height: 14),
+                Text(
+                  _status.isEmpty ? '正在启动...' : _status,
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
     }
+
     if (_repository == null) {
       return Scaffold(
         body: Center(
@@ -354,16 +453,15 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                   _status.isEmpty ? '初始化失败。' : _status,
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
                 FilledButton(
-                  onPressed: () {
-                    setState(() {
-                      _booting = true;
-                      _status = '';
-                    });
-                    _bootstrap();
-                  },
+                  onPressed: _retryBootstrap,
                   child: const Text('重试启动'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton(
+                  onPressed: _clearLocalAndRetry,
+                  child: const Text('清空本地数据后重试'),
                 ),
               ],
             ),
@@ -488,7 +586,7 @@ class _SetupOverlay extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '首次使用请填写食堂账号和原密码。初始化完成后会在后台同步近一年数据。',
+                      '首次使用请填写食堂账号和原密码。初始化完成后会在后台同步近四个月数据。',
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                     if (statusMessage.isNotEmpty) ...<Widget>[

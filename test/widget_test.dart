@@ -11,7 +11,7 @@ void main() {
 
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
-    await tester.pump(const Duration(seconds: 21));
+    await tester.pump(const Duration(seconds: 26));
     await tester.pumpWidget(const SizedBox.shrink());
   });
 }
