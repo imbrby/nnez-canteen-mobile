@@ -48,5 +48,7 @@ app.*.map.json
 /android/.gradle/
 /android/.kotlin/
 /android/local.properties
+/android/key.properties
+*.jks
 **/flutter/ephemeral/
 **/.plugin_symlinks/

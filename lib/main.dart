@@ -345,9 +345,12 @@ class _AppShellState extends State<AppShell> {
     // 计算月度统计
     final selectedTransactions = _transactionsByMonth[_selectedMonth] ?? [];
     final dailyTotals = <String, double>{};
+    final dailyCounts = <String, int>{};
     for (final txn in selectedTransactions) {
       dailyTotals[txn.occurredDay] =
           (dailyTotals[txn.occurredDay] ?? 0.0) + txn.amount.abs();
+      dailyCounts[txn.occurredDay] =
+          (dailyCounts[txn.occurredDay] ?? 0) + 1;
     }
     MonthlySummary? monthlySummary;
     if (selectedTransactions.isNotEmpty) {
@@ -376,6 +379,11 @@ class _AppShellState extends State<AppShell> {
       );
     }
 
+    // 最近20条消费记录
+    final allTransactions = _transactionsByMonth.values.expand((list) => list).toList()
+      ..sort((a, b) => b.occurredAt.compareTo(a.occurredAt));
+    final recentTransactions = allTransactions.take(20).toList();
+
     final body = IndexedStack(
       index: _tabIndex,
       children: <Widget>[
@@ -385,6 +393,8 @@ class _AppShellState extends State<AppShell> {
           monthLabel: _monthLabel(_selectedMonth),
           selectedMonth: _selectedMonth,
           dailyTotals: dailyTotals,
+          dailyCounts: dailyCounts,
+          recentTransactions: recentTransactions,
           canGoNext: _selectedMonth.compareTo(_currentMonthKey()) < 0,
           onPrevMonth: () => _switchMonth(-1),
           onNextMonth: () => _switchMonth(1),

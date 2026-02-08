@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_app/core/time_utils.dart';
 import 'package:mobile_app/models/monthly_summary.dart';
+import 'package:mobile_app/models/transaction_record.dart';
 import 'package:mobile_app/services/canteen_repository.dart';
 
 class HomePage extends StatelessWidget {
@@ -11,6 +12,8 @@ class HomePage extends StatelessWidget {
     required this.monthLabel,
     required this.selectedMonth,
     required this.dailyTotals,
+    required this.dailyCounts,
+    required this.recentTransactions,
     required this.canGoNext,
     required this.onPrevMonth,
     required this.onNextMonth,
@@ -21,6 +24,8 @@ class HomePage extends StatelessWidget {
   final String monthLabel;
   final String selectedMonth;
   final Map<String, double> dailyTotals;
+  final Map<String, int> dailyCounts;
+  final List<TransactionRecord> recentTransactions;
   final bool canGoNext;
   final VoidCallback onPrevMonth;
   final VoidCallback onNextMonth;
@@ -196,9 +201,35 @@ class HomePage extends StatelessWidget {
                 child: _SpendingCalendar(
                   selectedMonth: selectedMonth,
                   dailyTotals: dailyTotals,
+                  dailyCounts: dailyCounts,
                 ),
               ),
             ),
+            if (recentTransactions.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              // Recent Transactions Card
+              Card(
+                elevation: 2,
+                shadowColor: colorScheme.shadow.withValues(alpha: 0.3),
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.receipt_long_outlined, color: colorScheme.primary, size: 20),
+                          const SizedBox(width: 8),
+                          Text('最近消费', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      ...recentTransactions.map((txn) => _TransactionTile(txn: txn)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ],
           ),
         ),
@@ -271,21 +302,82 @@ class _StatItem extends StatelessWidget {
   }
 }
 
+class _TransactionTile extends StatelessWidget {
+  const _TransactionTile({required this.txn});
+
+  final TransactionRecord txn;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final time = txn.occurredAt.length >= 16 ? txn.occurredAt.substring(11, 16) : '';
+    final date = txn.occurredDay.length >= 10 ? '${txn.occurredDay.substring(5).replaceFirst('-', '/')} $time' : '';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: colorScheme.secondaryContainer,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(Icons.restaurant_outlined, size: 18, color: colorScheme.onSecondaryContainer),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  txn.itemName,
+                  style: theme.textTheme.bodyMedium,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  date,
+                  style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            '-¥${txn.amount.toStringAsFixed(2)}',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: colorScheme.error,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SpendingCalendar extends StatelessWidget {
   const _SpendingCalendar({
     required this.selectedMonth,
     required this.dailyTotals,
+    required this.dailyCounts,
   });
 
   final String selectedMonth;
   final Map<String, double> dailyTotals;
+  final Map<String, int> dailyCounts;
+
+  // Warm color palette
+  static const _warmLight = Color(0xFFFFF3E0);
+  static const _warmDark = Color(0xFFE65100);
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    // Parse year/month from "YYYY-MM"
     final parts = selectedMonth.split('-');
     final year = int.parse(parts[0]);
     final month = int.parse(parts[1]);
@@ -293,7 +385,6 @@ class _SpendingCalendar extends StatelessWidget {
     final daysInMonth = DateTime(year, month + 1, 0).day;
     final startWeekday = firstDay.weekday % 7; // 0=Sun
 
-    // Find max daily spending for color scaling
     final maxSpend = dailyTotals.values.isEmpty
         ? 1.0
         : dailyTotals.values.reduce((a, b) => a > b ? a : b);
@@ -311,7 +402,6 @@ class _SpendingCalendar extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 12),
-        // Weekday headers
         Row(
           children: weekdays.map((d) => Expanded(
             child: Center(
@@ -320,29 +410,12 @@ class _SpendingCalendar extends StatelessWidget {
           )).toList(),
         ),
         const SizedBox(height: 4),
-        // Calendar grid rows
-        ..._buildCalendarRows(
-          daysInMonth: daysInMonth,
-          startWeekday: startWeekday,
-          year: year,
-          month: month,
-          maxSpend: maxSpend,
-          theme: theme,
-          colorScheme: colorScheme,
-        ),
+        ..._buildRows(context, daysInMonth, startWeekday, year, month, maxSpend, theme, colorScheme),
       ],
     );
   }
 
-  List<Widget> _buildCalendarRows({
-    required int daysInMonth,
-    required int startWeekday,
-    required int year,
-    required int month,
-    required double maxSpend,
-    required ThemeData theme,
-    required ColorScheme colorScheme,
-  }) {
+  List<Widget> _buildRows(BuildContext context, int daysInMonth, int startWeekday, int year, int month, double maxSpend, ThemeData theme, ColorScheme colorScheme) {
     final rows = <Widget>[];
     var dayCounter = 1;
     final totalCells = startWeekday + daysInMonth;
@@ -358,50 +431,37 @@ class _SpendingCalendar extends StatelessWidget {
           final day = dayCounter;
           final dayStr = '$year-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
           final spent = dailyTotals[dayStr] ?? 0.0;
+          final count = dailyCounts[dayStr] ?? 0;
           final intensity = maxSpend > 0 ? (spent / maxSpend).clamp(0.0, 1.0) : 0.0;
 
           final bgColor = spent > 0
-              ? Color.lerp(
-                  colorScheme.primaryContainer,
-                  colorScheme.primary,
-                  intensity * 0.7,
-                )!
+              ? Color.lerp(_warmLight, _warmDark, intensity * 0.7)!
               : colorScheme.surfaceContainerHighest;
           final textColor = spent > 0
-              ? Color.lerp(
-                  colorScheme.onPrimaryContainer,
-                  colorScheme.onPrimary,
-                  intensity * 0.7,
-                )!
+              ? (intensity > 0.5 ? Colors.white : Colors.brown.shade900)
               : colorScheme.onSurfaceVariant;
 
           cells.add(Expanded(
-            child: Container(
-              height: 48,
-              margin: const EdgeInsets.all(1.5),
-              decoration: BoxDecoration(
-                color: bgColor,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    '$day',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: textColor,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  if (spent > 0)
-                    Text(
-                      spent.toStringAsFixed(0),
-                      style: TextStyle(
-                        fontSize: 9,
-                        color: textColor.withValues(alpha: 0.8),
+            child: GestureDetector(
+              onTap: spent > 0 ? () => _showDayDetail(context, dayStr, day, spent, count) : null,
+              child: Container(
+                height: 48,
+                margin: const EdgeInsets.all(1.5),
+                decoration: BoxDecoration(
+                  color: bgColor,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text('$day', style: TextStyle(fontSize: 10, color: textColor)),
+                    if (spent > 0)
+                      Text(
+                        '¥${spent.toStringAsFixed(0)}',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: textColor),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           ));
@@ -411,6 +471,46 @@ class _SpendingCalendar extends StatelessWidget {
       rows.add(Row(children: cells));
     }
     return rows;
+  }
+
+  void _showDayDetail(BuildContext context, String dayStr, int day, double spent, int count) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('$day日消费详情', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                Column(
+                  children: [
+                    Icon(Icons.payments_outlined, color: colorScheme.primary),
+                    const SizedBox(height: 4),
+                    Text('¥${spent.toStringAsFixed(2)}', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                    Text('总消费', style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant)),
+                  ],
+                ),
+                Column(
+                  children: [
+                    Icon(Icons.receipt_long_outlined, color: colorScheme.primary),
+                    const SizedBox(height: 4),
+                    Text('$count', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                    Text('交易笔数', style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant)),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
   }
 }
 
