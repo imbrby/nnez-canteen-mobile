@@ -285,8 +285,13 @@ class CampusApiClient {
       refererPath: '/mobile/yktzxcz',
     );
     final payload = _decodeJson(response.body);
+    final rawPreview = response.body.length > 300
+        ? response.body.substring(0, 300)
+        : response.body;
+    _logInfo('fetchBalance raw=$rawPreview');
+    _logInfo('fetchBalance keys=${payload.keys.toList()} isSuccess=${_isSuccess(payload)}');
     if (response.statusCode != 200 || !_isSuccess(payload)) {
-      throw Exception('查询余额失败：${_extractMessage(payload)}');
+      throw Exception('查询余额失败：${_extractMessage(payload)}（raw=$rawPreview）');
     }
     final value = double.tryParse(payload['data']?.toString() ?? '');
     if (value == null) {
