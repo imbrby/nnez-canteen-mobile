@@ -16,30 +16,26 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
     await AppLogService.instance.init();
-    await AppLogService.instance.info('应用启动', tag: 'BOOT');
+    AppLogService.instance.info('应用启动', tag: 'BOOT');
   } catch (_) {
     // Keep app startup resilient even if log file initialization fails.
   }
 
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
-    unawaited(
-      AppLogService.instance.error(
-        'FlutterError: ${details.exceptionAsString()}',
-        tag: 'CRASH',
-        stackTrace: details.stack,
-      ),
+    AppLogService.instance.error(
+      'FlutterError: ${details.exceptionAsString()}',
+      tag: 'CRASH',
+      stackTrace: details.stack,
     );
   };
 
   ui.PlatformDispatcher.instance.onError = (error, stackTrace) {
-    unawaited(
-      AppLogService.instance.error(
-        'PlatformDispatcher 未捕获异常',
-        tag: 'CRASH',
-        error: error,
-        stackTrace: stackTrace,
-      ),
+    AppLogService.instance.error(
+      'PlatformDispatcher 未捕获异常',
+      tag: 'CRASH',
+      error: error,
+      stackTrace: stackTrace,
     );
     return false;
   };
@@ -49,13 +45,11 @@ Future<void> main() async {
       runApp(const CanteenApp());
     },
     (error, stackTrace) {
-      unawaited(
-        AppLogService.instance.error(
-          'runZonedGuarded 未捕获异常',
-          tag: 'CRASH',
-          error: error,
-          stackTrace: stackTrace,
-        ),
+      AppLogService.instance.error(
+        'runZonedGuarded 未捕获异常',
+        tag: 'CRASH',
+        error: error,
+        stackTrace: stackTrace,
       );
     },
   );
@@ -505,21 +499,19 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   }
 
   void _logInfo(String message) {
-    unawaited(AppLogService.instance.info(message, tag: 'APP'));
+    AppLogService.instance.info(message, tag: 'APP');
   }
 
   void _logWarn(String message) {
-    unawaited(AppLogService.instance.warn(message, tag: 'APP'));
+    AppLogService.instance.warn(message, tag: 'APP');
   }
 
   void _logError(String context, Object error, StackTrace stackTrace) {
-    unawaited(
-      AppLogService.instance.error(
-        context,
-        tag: 'APP',
-        error: error,
-        stackTrace: stackTrace,
-      ),
+    AppLogService.instance.error(
+      context,
+      tag: 'APP',
+      error: error,
+      stackTrace: stackTrace,
     );
   }
 

@@ -386,17 +386,15 @@ class CanteenRepository {
   }
 
   void _logInfo(String message) {
-    unawaited(AppLogService.instance.info(message, tag: 'REPO'));
+    AppLogService.instance.info(message, tag: 'REPO');
   }
 
   void _logError(String context, Object error, StackTrace stackTrace) {
-    unawaited(
-      AppLogService.instance.error(
-        context,
-        tag: 'REPO',
-        error: error,
-        stackTrace: stackTrace,
-      ),
+    AppLogService.instance.error(
+      context,
+      tag: 'REPO',
+      error: error,
+      stackTrace: stackTrace,
     );
   }
 

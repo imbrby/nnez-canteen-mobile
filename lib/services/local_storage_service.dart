@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:mobile_app/models/campus_profile.dart';
@@ -168,17 +167,15 @@ class LocalStorageService {
   }
 
   void _logInfo(String message) {
-    unawaited(AppLogService.instance.info(message, tag: 'STORE'));
+    AppLogService.instance.info(message, tag: 'STORE');
   }
 
   void _logError(String context, Object error, StackTrace stackTrace) {
-    unawaited(
-      AppLogService.instance.error(
-        context,
-        tag: 'STORE',
-        error: error,
-        stackTrace: stackTrace,
-      ),
+    AppLogService.instance.error(
+      context,
+      tag: 'STORE',
+      error: error,
+      stackTrace: stackTrace,
     );
   }
 }

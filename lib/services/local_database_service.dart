@@ -1,4 +1,3 @@
-import 'dart:async';
 
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
@@ -174,6 +173,6 @@ class LocalDatabaseService {
   }
 
   void _logInfo(String message) {
-    unawaited(AppLogService.instance.info(message, tag: 'DB'));
+    AppLogService.instance.info(message, tag: 'DB');
   }
 }

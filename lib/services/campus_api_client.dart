@@ -440,17 +440,15 @@ class CampusApiClient {
   }
 
   void _logInfo(String message) {
-    unawaited(AppLogService.instance.info(message, tag: 'API'));
+    AppLogService.instance.info(message, tag: 'API');
   }
 
   void _logError(String context, Object error, StackTrace stackTrace) {
-    unawaited(
-      AppLogService.instance.error(
-        context,
-        tag: 'API',
-        error: error,
-        stackTrace: stackTrace,
-      ),
+    AppLogService.instance.error(
+      context,
+      tag: 'API',
+      error: error,
+      stackTrace: stackTrace,
     );
   }
 }

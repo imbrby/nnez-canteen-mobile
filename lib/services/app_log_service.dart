@@ -32,15 +32,15 @@ class AppLogService {
     await _appendAndFlush('===== New Session =====', level: 'INFO', tag: 'BOOT');
   }
 
-  Future<void> info(String message, {String tag = 'APP'}) {
-    return _append(level: 'INFO', tag: tag, message: message);
+  void info(String message, {String tag = 'APP'}) {
+    _append(level: 'INFO', tag: tag, message: message);
   }
 
-  Future<void> warn(String message, {String tag = 'APP'}) {
-    return _append(level: 'WARN', tag: tag, message: message);
+  void warn(String message, {String tag = 'APP'}) {
+    _append(level: 'WARN', tag: tag, message: message);
   }
 
-  Future<void> error(
+  void error(
     String message, {
     String tag = 'APP',
     Object? error,
@@ -57,7 +57,7 @@ class AppLogService {
         ..write('\nstack:\n')
         ..write(stackTrace);
     }
-    return _append(level: 'ERROR', tag: tag, message: buf.toString());
+    _append(level: 'ERROR', tag: tag, message: buf.toString());
   }
 
   Future<void> clear() async {
@@ -87,11 +87,11 @@ class AppLogService {
     return lines.sublist(start).join('\n');
   }
 
-  Future<void> _append({
+  void _append({
     required String level,
     required String tag,
     required String message,
-  }) async {
+  }) {
     final now = DateTime.now().toIso8601String();
     final normalized = message.replaceAll('\r\n', '\n');
     _buffer.write('[$now][$level][$tag] $normalized\n');
