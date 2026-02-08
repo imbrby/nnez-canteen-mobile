@@ -83,4 +83,42 @@ class TransactionRecord {
       rawPayload: (map['rawPayload'] ?? '').toString(),
     );
   }
+
+  factory TransactionRecord.fromRemote(Map<String, dynamic> remote) {
+    // Parse amount (消费金额)
+    final amountStr = (remote['Money'] ?? '0').toString();
+    final amount = (double.tryParse(amountStr) ?? 0.0).abs();
+
+    // Parse balance (余额)
+    final balanceStr = (remote['Balance'] ?? '').toString();
+    final balance = balanceStr.isEmpty || balanceStr == '-1'
+        ? null
+        : double.tryParse(balanceStr);
+
+    // Parse datetime (交易时间格式: "2026/2/2 17:17:32")
+    final timeStr = (remote['Time'] ?? '').toString();
+    String occurredAt = '';
+    String occurredDay = '';
+    final match = RegExp(
+      r'^(\d{4})/(\d{1,2})/(\d{1,2})\s+(\d{1,2}):(\d{1,2}):(\d{1,2})$',
+    ).firstMatch(timeStr);
+    if (match != null) {
+      String pad(String v) => v.padLeft(2, '0');
+      occurredDay = '${match.group(1)!}-${pad(match.group(2)!)}-${pad(match.group(3)!)}';
+      occurredAt = '$occurredDay ${pad(match.group(4)!)}:${pad(match.group(5)!)}:${pad(match.group(6)!)}';
+    }
+
+    return TransactionRecord(
+      sid: '',
+      txnId: (remote['Id'] ?? '').toString(),
+      amount: amount,
+      balance: balance,
+      occurredAt: occurredAt,
+      occurredDay: occurredDay,
+      itemName: (remote['ItemName'] ?? '未知消费点').toString().trim().isEmpty
+          ? '未知消费点'
+          : (remote['ItemName'] ?? '').toString().trim(),
+      rawPayload: remote.toString(),
+    );
+  }
 }

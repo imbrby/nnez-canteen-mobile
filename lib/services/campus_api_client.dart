@@ -103,6 +103,37 @@ Future<_IsolateResult> _fetchAllInIsolate(_FetchAllParams params) async {
     }
     logInfo('login success');
 
+    // Fetch transactions for current month
+    List<Map<String, dynamic>> transactions = <Map<String, dynamic>>[];
+    if (params.includeTransactions) {
+      final recordsResp = await _postForm(
+        client: client,
+        session: session,
+        path: '/interface/index',
+        payload: <String, String>{
+          'method': 'getecardxfmx',
+          'stuid': '1',
+          'carno': params.sid,
+          'starttime': params.startDate,
+          'endtime': params.endDate,
+        },
+        refererPath: '/mobile/yktxfjl',
+        logInfo: logInfo,
+      );
+      final recordsJson = _decodeJson(recordsResp.body);
+      if (recordsResp.statusCode == 200 && _isSuccess(recordsJson)) {
+        final parsed = recordsJson['data'];
+        if (parsed is List) {
+          for (final item in parsed) {
+            if (item is Map<String, dynamic>) {
+              transactions.add(item);
+            }
+          }
+        }
+      }
+      logInfo('transactions fetched rows=${transactions.length}');
+    }
+
     final balance =
         await _fetchBalance(client, session, params.sid, logInfo);
     logInfo('balance fetched value=${balance.toStringAsFixed(2)}');
@@ -112,9 +143,20 @@ Future<_IsolateResult> _fetchAllInIsolate(_FetchAllParams params) async {
       'profile fetched sid=${profile.sid} name=${profile.studentName}',
     );
 
+    // Parse transactions
+    final records = <TransactionRecord>[];
+    for (final item in transactions) {
+      try {
+        records.add(TransactionRecord.fromRemote(item));
+      } catch (e) {
+        logInfo('skip invalid transaction: $e');
+      }
+    }
+    logInfo('parsed ${records.length} valid transactions');
+
     final payload = CampusSyncPayload(
       profile: profile,
-      transactions: <TransactionRecord>[],
+      transactions: records,
       balance: balance,
       balanceUpdatedAt: DateTime.now(),
     );

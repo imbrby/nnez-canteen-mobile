@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:mobile_app/models/campus_profile.dart';
+import 'package:mobile_app/models/transaction_record.dart';
 import 'package:mobile_app/services/app_log_service.dart';
 import 'package:mobile_app/services/campus_api_client.dart';
 import 'package:mobile_app/services/local_storage_service.dart';
@@ -62,7 +63,7 @@ class CanteenRepository {
     _volatileBalanceUpdatedAt = '';
   }
 
-  Future<void> syncNow({
+  Future<List<TransactionRecord>> syncNow({
     void Function(String message)? onProgress,
   }) async {
     if (!hasCredential) {
@@ -71,14 +72,19 @@ class CanteenRepository {
     final sid = _storage.campusSid;
     final password = _storage.campusPassword;
 
+    // 获取当月的起止日期
+    final now = DateTime.now();
+    final startDate = DateTime(now.year, now.month, 1);
+    final endDate = DateTime(now.year, now.month + 1, 0); // 当月最后一天
+
     _logInfo('sync.fetchAll start');
     final payload = await _apiClient
         .fetchAll(
           sid: sid,
           plainPassword: password,
-          startDate: '2026-01-01',
-          endDate: '2026-12-31',
-          includeTransactions: false,
+          startDate: '${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}',
+          endDate: '${endDate.year}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}',
+          includeTransactions: true,
           onProgress: onProgress,
         )
         .timeout(
@@ -87,7 +93,7 @@ class CanteenRepository {
             throw TimeoutException('同步接口超时，请稍后重试。');
           },
         );
-    _logInfo('sync.fetchAll ok');
+    _logInfo('sync.fetchAll ok, got ${payload.transactions.length} transactions');
 
     _volatileProfile = payload.profile;
     _volatileBalance = payload.balance;
@@ -99,6 +105,8 @@ class CanteenRepository {
       balanceUpdatedAt: payload.balanceUpdatedAt.toIso8601String(),
     );
     _logInfo('syncNow done');
+
+    return payload.transactions;
   }
 
   Future<void> logout() async {

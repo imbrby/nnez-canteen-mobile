@@ -3,6 +3,8 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:mobile_app/models/campus_profile.dart';
+import 'package:mobile_app/models/monthly_summary.dart';
+import 'package:mobile_app/models/transaction_record.dart';
 import 'package:mobile_app/pages/home_page.dart';
 import 'package:mobile_app/pages/settings_page.dart';
 import 'package:mobile_app/services/app_log_service.dart';
@@ -95,6 +97,7 @@ class _AppShellState extends State<AppShell> {
   bool _syncing = false;
   bool _settingUp = false;
   int _tabIndex = 0;
+  List<TransactionRecord> _transactions = [];
 
   @override
   void initState() {
@@ -148,13 +151,15 @@ class _AppShellState extends State<AppShell> {
     });
 
     try {
-      await repo.syncNow();
+      final transactions = await repo.syncNow();
+
       if (!mounted) return;
       _profile = repo.profile;
+      _transactions = transactions;
       setState(() {
         _status = '刷新完成。';
       });
-      _logInfo('刷新完成');
+      _logInfo('刷新完成，获取到 ${transactions.length} 条流水');
     } catch (error, stackTrace) {
       _logError('刷新失败', error, stackTrace);
       if (!mounted) return;
@@ -288,12 +293,50 @@ class _AppShellState extends State<AppShell> {
       );
     }
 
+    // 计算月度统计
+    MonthlySummary? monthlySummary;
+    if (_transactions.isNotEmpty) {
+      final totalExpense = _transactions.fold<double>(
+        0.0,
+        (sum, txn) => sum + txn.amount.abs(),
+      );
+      final totalCount = _transactions.length;
+
+      // 计算活跃天数
+      final activeDays = _transactions
+          .map((txn) => txn.occurredDay)
+          .toSet()
+          .length;
+
+      // 计算单日峰值
+      final dailyTotals = <String, double>{};
+      for (final txn in _transactions) {
+        dailyTotals[txn.occurredDay] =
+            (dailyTotals[txn.occurredDay] ?? 0.0) + txn.amount.abs();
+      }
+      final peakDaily = dailyTotals.values.isEmpty
+          ? 0.0
+          : dailyTotals.values.reduce((a, b) => a > b ? a : b);
+
+      monthlySummary = MonthlySummary(
+        totalSpent: totalExpense,
+        transactionCount: totalCount,
+        activeDays: activeDays,
+        avgPerTransaction: totalCount > 0 ? totalExpense / totalCount : 0.0,
+        avgPerActiveDay: activeDays > 0 ? totalExpense / activeDays : 0.0,
+        maxDailySpent: peakDaily,
+      );
+    }
+
     final body = IndexedStack(
       index: _tabIndex,
       children: <Widget>[
         HomePage(
           repository: _repository,
           status: _status,
+          isSyncing: _syncing,
+          monthlySummary: monthlySummary,
+          onRefresh: _syncNow,
         ),
         SettingsPage(
           profile: _profile,
