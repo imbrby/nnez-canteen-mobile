@@ -96,6 +96,7 @@ class _AppShellState extends State<AppShell> {
   String _status = '';
   bool _syncing = false;
   bool _settingUp = false;
+  Timer? _statusClearTimer;
   int _tabIndex = 0;
   final Map<String, List<TransactionRecord>> _transactionsByMonth = {};
   late String _selectedMonth = _currentMonthKey();
@@ -111,6 +112,7 @@ class _AppShellState extends State<AppShell> {
   void dispose() {
     _sidController.dispose();
     _passwordController.dispose();
+    _statusClearTimer?.cancel();
     _repository?.close();
     super.dispose();
   }
@@ -156,10 +158,30 @@ class _AppShellState extends State<AppShell> {
 
       if (!mounted) return;
       _profile = repo.profile;
-      _transactionsByMonth[_currentMonthKey()] = transactions;
+      // Distribute transactions by month and merge with existing
+      final newByMonth = <String, List<TransactionRecord>>{};
+      for (final txn in transactions) {
+        final key = txn.occurredDay.substring(0, 7); // "YYYY-MM"
+        (newByMonth[key] ??= []).add(txn);
+      }
+      for (final entry in newByMonth.entries) {
+        final existing = _transactionsByMonth[entry.key] ?? [];
+        final existingIds = existing.map((t) => t.txnId).toSet();
+        final merged = [...existing];
+        for (final txn in entry.value) {
+          if (!existingIds.contains(txn.txnId)) {
+            merged.add(txn);
+          }
+        }
+        _transactionsByMonth[entry.key] = merged;
+      }
       _selectedMonth = _currentMonthKey();
       setState(() {
-        _status = '刷新完成';
+        _status = '刷新成功';
+      });
+      _statusClearTimer?.cancel();
+      _statusClearTimer = Timer(const Duration(seconds: 3), () {
+        if (mounted) setState(() => _status = '');
       });
       _logInfo('刷新完成，获取到 ${transactions.length} 条流水');
     } catch (error, stackTrace) {
@@ -322,6 +344,11 @@ class _AppShellState extends State<AppShell> {
 
     // 计算月度统计
     final selectedTransactions = _transactionsByMonth[_selectedMonth] ?? [];
+    final dailyTotals = <String, double>{};
+    for (final txn in selectedTransactions) {
+      dailyTotals[txn.occurredDay] =
+          (dailyTotals[txn.occurredDay] ?? 0.0) + txn.amount.abs();
+    }
     MonthlySummary? monthlySummary;
     if (selectedTransactions.isNotEmpty) {
       final totalExpense = selectedTransactions.fold<double>(
@@ -330,18 +357,11 @@ class _AppShellState extends State<AppShell> {
       );
       final totalCount = selectedTransactions.length;
 
-      // 计算活跃天数
       final activeDays = selectedTransactions
           .map((txn) => txn.occurredDay)
           .toSet()
           .length;
 
-      // 计算单日峰值
-      final dailyTotals = <String, double>{};
-      for (final txn in selectedTransactions) {
-        dailyTotals[txn.occurredDay] =
-            (dailyTotals[txn.occurredDay] ?? 0.0) + txn.amount.abs();
-      }
       final peakDaily = dailyTotals.values.isEmpty
           ? 0.0
           : dailyTotals.values.reduce((a, b) => a > b ? a : b);
@@ -361,14 +381,13 @@ class _AppShellState extends State<AppShell> {
       children: <Widget>[
         HomePage(
           repository: _repository,
-          status: _status,
-          isSyncing: _syncing,
           monthlySummary: monthlySummary,
           monthLabel: _monthLabel(_selectedMonth),
+          selectedMonth: _selectedMonth,
+          dailyTotals: dailyTotals,
           canGoNext: _selectedMonth.compareTo(_currentMonthKey()) < 0,
           onPrevMonth: () => _switchMonth(-1),
           onNextMonth: () => _switchMonth(1),
-          onRefresh: _syncNow,
         ),
         SettingsPage(
           profile: _profile,
@@ -397,16 +416,22 @@ class _AppShellState extends State<AppShell> {
             ],
           ),
           floatingActionButton: hasCredential && _tabIndex == 0
-              ? FloatingActionButton(
-                  onPressed: _syncing || _settingUp ? null : _syncNow,
-                  child: _syncing
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.refresh),
-                )
+              ? _status.isNotEmpty && !_syncing
+                  ? FloatingActionButton.extended(
+                      onPressed: _settingUp ? null : _syncNow,
+                      icon: const Icon(Icons.check),
+                      label: Text(_status),
+                    )
+                  : FloatingActionButton(
+                      onPressed: _syncing || _settingUp ? null : _syncNow,
+                      child: _syncing
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.refresh),
+                    )
               : null,
         ),
         if (!hasCredential)

@@ -7,22 +7,20 @@ class HomePage extends StatelessWidget {
   const HomePage({
     super.key,
     required this.repository,
-    required this.status,
-    required this.isSyncing,
-    required this.onRefresh,
     required this.monthlySummary,
     required this.monthLabel,
+    required this.selectedMonth,
+    required this.dailyTotals,
     required this.canGoNext,
     required this.onPrevMonth,
     required this.onNextMonth,
   });
 
   final CanteenRepository? repository;
-  final String status;
-  final bool isSyncing;
-  final VoidCallback onRefresh;
   final MonthlySummary? monthlySummary;
   final String monthLabel;
+  final String selectedMonth;
+  final Map<String, double> dailyTotals;
   final bool canGoNext;
   final VoidCallback onPrevMonth;
   final VoidCallback onNextMonth;
@@ -62,30 +60,18 @@ class HomePage extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.account_balance_wallet_outlined,
-                              color: colorScheme.onPrimaryContainer,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              '当前余额',
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                color: colorScheme.onPrimaryContainer,
-                              ),
-                            ),
-                          ],
+                        Icon(
+                          Icons.account_balance_wallet_outlined,
+                          color: colorScheme.onPrimaryContainer,
+                          size: 20,
                         ),
-                        // Refresh button with status
-                        _RefreshButton(
-                          isSyncing: isSyncing,
-                          status: status,
-                          onRefresh: onRefresh,
-                          colorScheme: colorScheme,
+                        const SizedBox(width: 8),
+                        Text(
+                          '当前余额',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            color: colorScheme.onPrimaryContainer,
+                          ),
                         ),
                       ],
                     ),
@@ -163,7 +149,7 @@ class HomePage extends StatelessWidget {
                       const SizedBox(height: 16),
                       Row(
                         children: [
-                          Expanded(child: _StatItem(label: '总消费', value: '¥${summary.totalSpent.toStringAsFixed(2)}', icon: Icons.payments_outlined, colorScheme: colorScheme)),
+                          Expanded(child: _StatItem(label: '总消费', value: '¥${summary.totalSpent.toStringAsFixed(2)}', hint: '当月总消费', icon: Icons.payments_outlined, colorScheme: colorScheme)),
                           const SizedBox(width: 12),
                           Expanded(child: _StatItem(label: '总笔数', value: '${summary.transactionCount}', hint: '消费记录数', icon: Icons.receipt_long_outlined, colorScheme: colorScheme)),
                         ],
@@ -181,7 +167,7 @@ class HomePage extends StatelessWidget {
                         children: [
                           Expanded(child: _StatItem(label: '单笔均消费', value: '¥${summary.avgPerTransaction.toStringAsFixed(2)}', hint: '总额 / 笔数', icon: Icons.analytics_outlined, colorScheme: colorScheme)),
                           const SizedBox(width: 12),
-                          Expanded(child: _StatItem(label: '单日峰值', value: '¥${summary.maxDailySpent.toStringAsFixed(2)}', icon: Icons.arrow_upward_outlined, colorScheme: colorScheme)),
+                          Expanded(child: _StatItem(label: '单日峰值', value: '¥${summary.maxDailySpent.toStringAsFixed(2)}', hint: '单日最高消费', icon: Icons.arrow_upward_outlined, colorScheme: colorScheme)),
                         ],
                       ),
                     ],
@@ -200,74 +186,24 @@ class HomePage extends StatelessWidget {
                 ),
               ),
             ),
-            ],
+            const SizedBox(height: 16),
+            // Spending Calendar Card
+            Card(
+              elevation: 2,
+              shadowColor: colorScheme.shadow.withValues(alpha: 0.3),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: _SpendingCalendar(
+                  selectedMonth: selectedMonth,
+                  dailyTotals: dailyTotals,
+                ),
+              ),
+            ),
+          ],
           ),
         ),
       );
     }
-}
-
-class _RefreshButton extends StatelessWidget {
-  const _RefreshButton({
-    required this.isSyncing,
-    required this.status,
-    required this.onRefresh,
-    required this.colorScheme,
-  });
-
-  final bool isSyncing;
-  final String status;
-  final VoidCallback onRefresh;
-  final ColorScheme colorScheme;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: isSyncing ? null : onRefresh,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: colorScheme.onPrimaryContainer.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (isSyncing)
-              SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: colorScheme.onPrimaryContainer,
-                ),
-              )
-            else
-              Icon(
-                Icons.refresh,
-                size: 18,
-                color: colorScheme.onPrimaryContainer,
-              ),
-            if (status.isNotEmpty) ...[
-              const SizedBox(width: 6),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 100),
-                child: Text(
-                  status,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: colorScheme.onPrimaryContainer,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 class _StatItem extends StatelessWidget {
@@ -332,6 +268,149 @@ class _StatItem extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _SpendingCalendar extends StatelessWidget {
+  const _SpendingCalendar({
+    required this.selectedMonth,
+    required this.dailyTotals,
+  });
+
+  final String selectedMonth;
+  final Map<String, double> dailyTotals;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    // Parse year/month from "YYYY-MM"
+    final parts = selectedMonth.split('-');
+    final year = int.parse(parts[0]);
+    final month = int.parse(parts[1]);
+    final firstDay = DateTime(year, month, 1);
+    final daysInMonth = DateTime(year, month + 1, 0).day;
+    final startWeekday = firstDay.weekday % 7; // 0=Sun
+
+    // Find max daily spending for color scaling
+    final maxSpend = dailyTotals.values.isEmpty
+        ? 1.0
+        : dailyTotals.values.reduce((a, b) => a > b ? a : b);
+
+    const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.grid_view_outlined, color: colorScheme.primary, size: 20),
+            const SizedBox(width: 8),
+            Text('消费日历', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+          ],
+        ),
+        const SizedBox(height: 12),
+        // Weekday headers
+        Row(
+          children: weekdays.map((d) => Expanded(
+            child: Center(
+              child: Text(d, style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant)),
+            ),
+          )).toList(),
+        ),
+        const SizedBox(height: 4),
+        // Calendar grid rows
+        ..._buildCalendarRows(
+          daysInMonth: daysInMonth,
+          startWeekday: startWeekday,
+          year: year,
+          month: month,
+          maxSpend: maxSpend,
+          theme: theme,
+          colorScheme: colorScheme,
+        ),
+      ],
+    );
+  }
+
+  List<Widget> _buildCalendarRows({
+    required int daysInMonth,
+    required int startWeekday,
+    required int year,
+    required int month,
+    required double maxSpend,
+    required ThemeData theme,
+    required ColorScheme colorScheme,
+  }) {
+    final rows = <Widget>[];
+    var dayCounter = 1;
+    final totalCells = startWeekday + daysInMonth;
+    final rowCount = (totalCells / 7).ceil();
+
+    for (var row = 0; row < rowCount; row++) {
+      final cells = <Widget>[];
+      for (var col = 0; col < 7; col++) {
+        final cellIndex = row * 7 + col;
+        if (cellIndex < startWeekday || dayCounter > daysInMonth) {
+          cells.add(const Expanded(child: SizedBox(height: 48)));
+        } else {
+          final day = dayCounter;
+          final dayStr = '$year-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
+          final spent = dailyTotals[dayStr] ?? 0.0;
+          final intensity = maxSpend > 0 ? (spent / maxSpend).clamp(0.0, 1.0) : 0.0;
+
+          final bgColor = spent > 0
+              ? Color.lerp(
+                  colorScheme.primaryContainer,
+                  colorScheme.primary,
+                  intensity * 0.7,
+                )!
+              : colorScheme.surfaceContainerHighest;
+          final textColor = spent > 0
+              ? Color.lerp(
+                  colorScheme.onPrimaryContainer,
+                  colorScheme.onPrimary,
+                  intensity * 0.7,
+                )!
+              : colorScheme.onSurfaceVariant;
+
+          cells.add(Expanded(
+            child: Container(
+              height: 48,
+              margin: const EdgeInsets.all(1.5),
+              decoration: BoxDecoration(
+                color: bgColor,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    '$day',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: textColor,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  if (spent > 0)
+                    Text(
+                      spent.toStringAsFixed(0),
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: textColor.withValues(alpha: 0.8),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ));
+          dayCounter++;
+        }
+      }
+      rows.add(Row(children: cells));
+    }
+    return rows;
   }
 }
 

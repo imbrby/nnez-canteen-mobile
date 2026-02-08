@@ -31,32 +31,36 @@ class SettingsPage extends StatelessWidget {
                       color: colorScheme.surfaceContainerHighest,
                       child: Padding(
                         padding: const EdgeInsets.all(20.0),
-                        child: Column(
+                        child: Row(
                           children: [
-                            // Avatar
                             CircleAvatar(
-                              radius: 40,
+                              radius: 30,
                               backgroundColor: colorScheme.primaryContainer,
                               child: Icon(
                                 Icons.person,
-                                size: 40,
+                                size: 30,
                                 color: colorScheme.onPrimaryContainer,
                               ),
                             ),
-                            const SizedBox(height: 16),
-                            // Name
-                            Text(
-                              data.studentName,
-                              style: theme.textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            // Student ID
-                            Text(
-                              data.sid,
-                              style: theme.textTheme.bodyLarge?.copyWith(
-                                color: colorScheme.onSurfaceVariant,
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    data.studentName,
+                                    style: theme.textTheme.titleLarge?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'ID: ${data.idCode}',
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
@@ -64,41 +68,40 @@ class SettingsPage extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    // Info List
                     Card(
                       elevation: 0,
                       color: colorScheme.surfaceContainerHighest,
                       child: Column(
                         children: [
+                          if (data.academyName.isNotEmpty)
+                            ListTile(
+                              leading: Icon(Icons.account_balance_outlined, color: colorScheme.primary),
+                              title: const Text('学校'),
+                              trailing: Text(data.academyName, style: theme.textTheme.bodyLarge?.copyWith(color: colorScheme.onSurfaceVariant)),
+                            ),
+                          if (data.academyName.isNotEmpty && data.specialityName.isNotEmpty)
+                            const Divider(height: 1, indent: 56),
+                          if (data.specialityName.isNotEmpty)
+                            ListTile(
+                              leading: Icon(Icons.location_on_outlined, color: colorScheme.primary),
+                              title: const Text('校区'),
+                              trailing: Text(data.specialityName, style: theme.textTheme.bodyLarge?.copyWith(color: colorScheme.onSurfaceVariant)),
+                            ),
+                          if (data.specialityName.isNotEmpty && data.gradeName.isNotEmpty)
+                            const Divider(height: 1, indent: 56),
                           if (data.gradeName.isNotEmpty)
                             ListTile(
-                              leading: Icon(
-                                Icons.school_outlined,
-                                color: colorScheme.primary,
-                              ),
+                              leading: Icon(Icons.school_outlined, color: colorScheme.primary),
                               title: const Text('年级'),
-                              trailing: Text(
-                                data.gradeName,
-                                style: theme.textTheme.bodyLarge?.copyWith(
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
+                              trailing: Text(data.gradeName, style: theme.textTheme.bodyLarge?.copyWith(color: colorScheme.onSurfaceVariant)),
                             ),
                           if (data.gradeName.isNotEmpty && data.className.isNotEmpty)
                             const Divider(height: 1, indent: 56),
                           if (data.className.isNotEmpty)
                             ListTile(
-                              leading: Icon(
-                                Icons.class_outlined,
-                                color: colorScheme.primary,
-                              ),
+                              leading: Icon(Icons.class_outlined, color: colorScheme.primary),
                               title: const Text('班级'),
-                              trailing: Text(
-                                data.className,
-                                style: theme.textTheme.bodyLarge?.copyWith(
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
+                              trailing: Text(data.className, style: theme.textTheme.bodyLarge?.copyWith(color: colorScheme.onSurfaceVariant)),
                             ),
                         ],
                       ),

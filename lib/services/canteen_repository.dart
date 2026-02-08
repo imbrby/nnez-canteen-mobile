@@ -72,10 +72,10 @@ class CanteenRepository {
     final sid = _storage.campusSid;
     final password = _storage.campusPassword;
 
-    // 获取当月的起止日期
+    // 获取近30天的起止日期
     final now = DateTime.now();
-    final startDate = DateTime(now.year, now.month, 1);
-    final endDate = DateTime(now.year, now.month + 1, 0); // 当月最后一天
+    final startDate = now.subtract(const Duration(days: 30));
+    final endDate = now;
 
     _logInfo('sync.fetchAll start');
     final payload = await _apiClient
