@@ -16,38 +16,160 @@ class SettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final data = profile;
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: <Widget>[
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: data == null
-                ? const Text('尚未初始化账号。请先完成账号绑定。')
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        data.studentName,
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      const SizedBox(height: 8),
-                      Text('账号: ${data.sid}'),
-                      if (data.gradeName.isNotEmpty)
-                        Text('年级: ${data.gradeName}'),
-                      if (data.className.isNotEmpty)
-                        Text('班级: ${data.className}'),
-                    ],
-                  ),
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Scaffold(
+      body: CustomScrollView(
+        slivers: [
+          SliverAppBar.large(
+            title: const Text('设置'),
           ),
-        ),
-        const SizedBox(height: 20),
-        FilledButton.tonalIcon(
-          onPressed: (data == null || isBusy) ? null : onLogout,
-          icon: const Icon(Icons.logout),
-          label: const Text('退出登录'),
-        ),
-      ],
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // User Profile Card
+                  if (data != null) ...[
+                    Card(
+                      elevation: 0,
+                      color: colorScheme.surfaceContainerHighest,
+                      child: Padding(
+                        padding: const EdgeInsets.all(20.0),
+                        child: Column(
+                          children: [
+                            // Avatar
+                            CircleAvatar(
+                              radius: 40,
+                              backgroundColor: colorScheme.primaryContainer,
+                              child: Text(
+                                data.studentName.isNotEmpty
+                                    ? data.studentName[0]
+                                    : '?',
+                                style: theme.textTheme.headlineMedium?.copyWith(
+                                  color: colorScheme.onPrimaryContainer,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            // Name
+                            Text(
+                              data.studentName,
+                              style: theme.textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            // Student ID
+                            Text(
+                              data.sid,
+                              style: theme.textTheme.bodyLarge?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    // Info List
+                    Card(
+                      elevation: 0,
+                      color: colorScheme.surfaceContainerHighest,
+                      child: Column(
+                        children: [
+                          if (data.gradeName.isNotEmpty)
+                            ListTile(
+                              leading: Icon(
+                                Icons.school_outlined,
+                                color: colorScheme.primary,
+                              ),
+                              title: const Text('年级'),
+                              trailing: Text(
+                                data.gradeName,
+                                style: theme.textTheme.bodyLarge?.copyWith(
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
+                          if (data.gradeName.isNotEmpty && data.className.isNotEmpty)
+                            const Divider(height: 1, indent: 56),
+                          if (data.className.isNotEmpty)
+                            ListTile(
+                              leading: Icon(
+                                Icons.class_outlined,
+                                color: colorScheme.primary,
+                              ),
+                              title: const Text('班级'),
+                              trailing: Text(
+                                data.className,
+                                style: theme.textTheme.bodyLarge?.copyWith(
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    // Logout Button
+                    FilledButton.tonal(
+                      onPressed: isBusy ? null : onLogout,
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.logout,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          const Text('退出登录'),
+                        ],
+                      ),
+                    ),
+                  ] else ...[
+                    // Not initialized state
+                    Card(
+                      elevation: 0,
+                      color: colorScheme.surfaceContainerHighest,
+                      child: Padding(
+                        padding: const EdgeInsets.all(24.0),
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.account_circle_outlined,
+                              size: 64,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              '尚未初始化账号',
+                              style: theme.textTheme.titleLarge,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              '请先完成账号绑定',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

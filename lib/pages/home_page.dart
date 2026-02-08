@@ -17,38 +17,115 @@ class HomePage extends StatelessWidget {
     final repo = repository;
     final balance = repo?.balance;
     final balanceUpdatedAt = repo?.balanceUpdatedAt;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: <Widget>[
-        if (status.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Text(status),
+    return Scaffold(
+      body: CustomScrollView(
+        slivers: [
+          SliverAppBar.large(
+            title: const Text('一粟'),
           ),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                const Text('当前余额'),
-                const SizedBox(height: 8),
-                Text(
-                  balance == null ? '-' : '¥${balance.toStringAsFixed(2)}',
-                  style: Theme.of(context).textTheme.headlineMedium,
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  balanceUpdatedAt == null || balanceUpdatedAt.isEmpty
-                      ? '未同步'
-                      : '更新于 ${formatDateTime(balanceUpdatedAt)}',
-                ),
-              ],
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Status message
+                  if (status.isNotEmpty)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 16),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: status.contains('失败')
+                            ? colorScheme.errorContainer
+                            : colorScheme.secondaryContainer,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            status.contains('失败')
+                                ? Icons.error_outline
+                                : Icons.info_outline,
+                            color: status.contains('失败')
+                                ? colorScheme.onErrorContainer
+                                : colorScheme.onSecondaryContainer,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              status,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: status.contains('失败')
+                                    ? colorScheme.onErrorContainer
+                                    : colorScheme.onSecondaryContainer,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  // Balance Card
+                  Card(
+                    elevation: 0,
+                    color: colorScheme.primaryContainer,
+                    child: Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.account_balance_wallet_outlined,
+                                color: colorScheme.onPrimaryContainer,
+                                size: 24,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '当前余额',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  color: colorScheme.onPrimaryContainer,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            balance == null
+                                ? '¥ --'
+                                : '¥ ${balance.toStringAsFixed(2)}',
+                            style: theme.textTheme.displaySmall?.copyWith(
+                              color: colorScheme.onPrimaryContainer,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            balanceUpdatedAt == null || balanceUpdatedAt.isEmpty
+                                ? '点击右下角刷新按钮同步余额'
+                                : '更新于 ${formatDateTime(balanceUpdatedAt)}',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: colorScheme.onPrimaryContainer
+                                  .withValues(alpha: 0.8),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

@@ -308,10 +308,6 @@ class _AppShellState extends State<AppShell> {
     return Stack(
       children: <Widget>[
         Scaffold(
-          appBar: AppBar(
-            title: const Text('一粟'),
-            centerTitle: true,
-          ),
           body: body,
           bottomNavigationBar: NavigationBar(
             selectedIndex: _tabIndex,
