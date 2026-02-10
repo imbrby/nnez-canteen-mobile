@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:nnez_yisu/models/campus_profile.dart';
 import 'package:nnez_yisu/models/monthly_summary.dart';
@@ -54,15 +55,29 @@ Future<void> main() async {
     return false;
   };
 
-  // Initialize Workmanager for background sync
-  await Workmanager().initialize(_workmanagerCallbackDispatcher);
-  await Workmanager().registerPeriodicTask(
-    backgroundSyncTaskName,
-    backgroundSyncTaskName,
-    frequency: const Duration(hours: 3),
-    constraints: Constraints(networkType: NetworkType.connected),
-    existingWorkPolicy: ExistingPeriodicWorkPolicy.keep,
-  );
+  final isMobile =
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
+  if (isMobile) {
+    try {
+      await Workmanager().initialize(_workmanagerCallbackDispatcher);
+      await Workmanager().registerPeriodicTask(
+        backgroundSyncTaskName,
+        backgroundSyncTaskName,
+        frequency: const Duration(hours: 3),
+        constraints: Constraints(networkType: NetworkType.connected),
+        existingWorkPolicy: ExistingPeriodicWorkPolicy.keep,
+      );
+    } catch (error, stackTrace) {
+      AppLogService.instance.error(
+        'Workmanager 初始化失败',
+        tag: 'BOOT',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+  }
 
   await runZonedGuarded(
     () async {

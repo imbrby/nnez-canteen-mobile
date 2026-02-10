@@ -87,10 +87,22 @@ jobs:
           name: app-release-apk
           path: build/app/outputs/flutter-apk/yisu-*.apk
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: 一粟 ${{ steps.version.outputs.tag }}
-          generate_release_notes: true
-          files: build/app/outputs/flutter-apk/yisu-*.apk
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_NAME: 一粟 ${{ steps.version.outputs.tag }}
+          APK_PATH: build/app/outputs/flutter-apk/yisu-${{ steps.version.outputs.tag }}-arm64.apk
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          if gh release view "$TAG" --repo "$REPO" > /dev/null 2>&1; then
+            gh release upload "$TAG" "$APK_PATH" --repo "$REPO" --clobber
+            gh release edit "$TAG" --repo "$REPO" --title "$RELEASE_NAME"
+          else
+            gh release create "$TAG" "$APK_PATH" \
+              --repo "$REPO" \
+              --title "$RELEASE_NAME" \
+              --target "$COMMIT_SHA" \
+              --generate-notes
+          fi
