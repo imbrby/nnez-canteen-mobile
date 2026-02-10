@@ -10,6 +10,7 @@ import 'package:mobile_app/pages/detail_page.dart';
 import 'package:mobile_app/pages/home_page.dart';
 import 'package:mobile_app/pages/settings_page.dart';
 import 'package:mobile_app/services/app_log_service.dart';
+import 'package:mobile_app/services/app_update_service.dart';
 import 'package:mobile_app/services/background_sync_service.dart';
 import 'package:mobile_app/services/canteen_repository.dart';
 import 'package:mobile_app/services/data_transfer_service.dart';
@@ -125,6 +126,7 @@ class _AppShellState extends State<AppShell> {
   bool _settingUp = false;
   Timer? _statusClearTimer;
   Timer? _autoSyncTimer;
+  bool _autoUpdateChecked = false;
   int _tabIndex = 0;
   final Map<String, List<TransactionRecord>> _transactionsByMonth = {};
   final Map<String, List<RechargeRecord>> _rechargesByMonth = {};
@@ -138,6 +140,9 @@ class _AppShellState extends State<AppShell> {
     _logInfo('AppShell initState');
     _startAutoSyncTimer();
     _bootstrap();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeAutoCheckUpdateOnLaunch();
+    });
   }
 
   @override
@@ -202,6 +207,22 @@ class _AppShellState extends State<AppShell> {
       _logInfo('触发3小时自动刷新定时任务');
       _syncNow();
     });
+  }
+
+  Future<void> _maybeAutoCheckUpdateOnLaunch() async {
+    if (_autoUpdateChecked) return;
+    _autoUpdateChecked = true;
+    try {
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      if (!mounted) return;
+      final enabled = await AppUpdateService.instance.isAutoCheckEnabled();
+      if (!enabled) return;
+      final result = await AppUpdateService.instance.checkForUpdate();
+      if (!mounted || !result.hasUpdate) return;
+      await AppUpdateService.instance.showUpdateDialog(context, result);
+    } catch (error, stackTrace) {
+      _logError('自动检查更新失败', error, stackTrace);
+    }
   }
 
   Future<void> _syncNow() async {

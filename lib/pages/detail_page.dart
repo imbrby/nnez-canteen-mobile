@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mobile_app/core/expense_classifier.dart';
 import 'package:mobile_app/core/time_utils.dart';
 import 'package:mobile_app/models/recharge_record.dart';
 import 'package:mobile_app/models/transaction_record.dart';
@@ -151,6 +152,7 @@ class _DetailPageState extends State<DetailPage> {
           title: txn.itemName,
           amount: txn.amount.abs(),
           isRecharge: false,
+          expense: ExpenseClassifier.classify(txn.itemName),
         ),
       ),
       ...monthRecharges.map(
@@ -160,6 +162,7 @@ class _DetailPageState extends State<DetailPage> {
           title: recharge.channel.isEmpty ? '充值' : recharge.channel,
           amount: recharge.amount.abs(),
           isRecharge: true,
+          expense: null,
         ),
       ),
     ]..sort((a, b) => b.occurredAt.compareTo(a.occurredAt));
@@ -175,6 +178,22 @@ class _DetailPageState extends State<DetailPage> {
     final expenseTotal = filteredRecords
         .where((record) => !record.isRecharge)
         .fold<double>(0, (sum, record) => sum + record.amount);
+    final monthCategoryTotals = <ExpenseCategory, double>{
+      ExpenseCategory.meal: 0,
+      ExpenseCategory.drink: 0,
+      ExpenseCategory.snack: 0,
+    };
+    for (final record in monthRecords) {
+      if (record.isRecharge || record.expense == null) {
+        continue;
+      }
+      final category = record.expense!.category;
+      if (!monthCategoryTotals.containsKey(category)) {
+        continue;
+      }
+      monthCategoryTotals[category] =
+          (monthCategoryTotals[category] ?? 0) + record.amount;
+    }
 
     final canGoNext = _mode == _DetailMode.month
         ? _selectedMonth.compareTo(_currentMonthKey()) < 0
@@ -298,6 +317,23 @@ class _DetailPageState extends State<DetailPage> {
                     dailyTotals: dailyTotals,
                     dailyCounts: dailyCounts,
                     onDaySelected: _selectDayFromCalendar,
+                  ),
+                ),
+              ),
+            ],
+            if (_mode == _DetailMode.month) ...[
+              const SizedBox(height: 16),
+              Card(
+                elevation: 0,
+                color: colorScheme.surfaceContainerHighest,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: _MonthlyCategorySummary(
+                    mealAmount: monthCategoryTotals[ExpenseCategory.meal] ?? 0,
+                    drinkAmount:
+                        monthCategoryTotals[ExpenseCategory.drink] ?? 0,
+                    snackAmount:
+                        monthCategoryTotals[ExpenseCategory.snack] ?? 0,
                   ),
                 ),
               ),
@@ -428,6 +464,7 @@ class _DetailRecord {
     required this.title,
     required this.amount,
     required this.isRecharge,
+    required this.expense,
   });
 
   final String occurredAt;
@@ -435,6 +472,7 @@ class _DetailRecord {
   final String title;
   final double amount;
   final bool isRecharge;
+  final ExpenseClassification? expense;
 }
 
 class _DetailRecordTile extends StatelessWidget {
@@ -446,11 +484,14 @@ class _DetailRecordTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final visualStyle = _recordVisualStyle(record, colorScheme);
     final time = record.occurredAt.length >= 16
         ? record.occurredAt.substring(11, 16)
         : '';
+    final machineNumber = record.expense?.machineNumber;
+    final machineLabel = machineNumber == null ? '' : ' · $machineNumber号机';
     final date = record.occurredDay.length >= 10
-        ? '${record.occurredDay.substring(5).replaceFirst('-', '/')} $time'
+        ? '${record.occurredDay.substring(5).replaceFirst('-', '/')} $time$machineLabel'
         : formatDateTime(record.occurredAt);
 
     return Padding(
@@ -461,19 +502,13 @@ class _DetailRecordTile extends StatelessWidget {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: record.isRecharge
-                  ? colorScheme.tertiaryContainer
-                  : colorScheme.secondaryContainer,
+              color: visualStyle.backgroundColor,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
-              record.isRecharge
-                  ? Icons.add_circle_outline
-                  : Icons.restaurant_outlined,
+              visualStyle.icon,
               size: 18,
-              color: record.isRecharge
-                  ? colorScheme.onTertiaryContainer
-                  : colorScheme.onSecondaryContainer,
+              color: visualStyle.iconColor,
             ),
           ),
           const SizedBox(width: 12),
@@ -505,6 +540,178 @@ class _DetailRecordTile extends StatelessWidget {
               color: record.isRecharge
                   ? const Color(0xFF2E7D32)
                   : colorScheme.error,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  _RecordVisualStyle _recordVisualStyle(
+    _DetailRecord detailRecord,
+    ColorScheme colorScheme,
+  ) {
+    if (detailRecord.isRecharge) {
+      return _RecordVisualStyle(
+        icon: Icons.add_circle_outline,
+        backgroundColor: colorScheme.tertiaryContainer,
+        iconColor: colorScheme.onTertiaryContainer,
+      );
+    }
+    switch (detailRecord.expense?.category) {
+      case ExpenseCategory.meal:
+        return _RecordVisualStyle(
+          icon: Icons.restaurant_menu_outlined,
+          backgroundColor: colorScheme.primaryContainer,
+          iconColor: colorScheme.onPrimaryContainer,
+        );
+      case ExpenseCategory.drink:
+        return _RecordVisualStyle(
+          icon: Icons.local_cafe_outlined,
+          backgroundColor: colorScheme.tertiaryContainer,
+          iconColor: colorScheme.onTertiaryContainer,
+        );
+      case ExpenseCategory.snack:
+        return _RecordVisualStyle(
+          icon: Icons.icecream_outlined,
+          backgroundColor: colorScheme.secondaryContainer,
+          iconColor: colorScheme.onSecondaryContainer,
+        );
+      case ExpenseCategory.unknown:
+      case null:
+        return _RecordVisualStyle(
+          icon: Icons.receipt_long_outlined,
+          backgroundColor: colorScheme.surfaceContainerHighest,
+          iconColor: colorScheme.onSurfaceVariant,
+        );
+    }
+  }
+}
+
+class _RecordVisualStyle {
+  const _RecordVisualStyle({
+    required this.icon,
+    required this.backgroundColor,
+    required this.iconColor,
+  });
+
+  final IconData icon;
+  final Color backgroundColor;
+  final Color iconColor;
+}
+
+class _MonthlyCategorySummary extends StatelessWidget {
+  const _MonthlyCategorySummary({
+    required this.mealAmount,
+    required this.drinkAmount,
+    required this.snackAmount,
+  });
+
+  final double mealAmount;
+  final double drinkAmount;
+  final double snackAmount;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.category_outlined, color: colorScheme.primary, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              '地点分类',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _CategoryAmountTile(
+                label: '正餐',
+                amount: mealAmount,
+                icon: Icons.restaurant_menu_outlined,
+                foregroundColor: colorScheme.primary,
+                backgroundColor: colorScheme.primaryContainer,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _CategoryAmountTile(
+                label: '饮品',
+                amount: drinkAmount,
+                icon: Icons.local_cafe_outlined,
+                foregroundColor: colorScheme.tertiary,
+                backgroundColor: colorScheme.tertiaryContainer,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _CategoryAmountTile(
+                label: '小吃',
+                amount: snackAmount,
+                icon: Icons.icecream_outlined,
+                foregroundColor: colorScheme.secondary,
+                backgroundColor: colorScheme.secondaryContainer,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _CategoryAmountTile extends StatelessWidget {
+  const _CategoryAmountTile({
+    required this.label,
+    required this.amount,
+    required this.icon,
+    required this.foregroundColor,
+    required this.backgroundColor,
+  });
+
+  final String label;
+  final double amount;
+  final IconData icon;
+  final Color foregroundColor;
+  final Color backgroundColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: foregroundColor),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: foregroundColor,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '¥${amount.toStringAsFixed(2)}',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: foregroundColor,
+              fontWeight: FontWeight.w800,
             ),
           ),
         ],
