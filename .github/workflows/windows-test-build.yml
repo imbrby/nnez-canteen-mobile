@@ -37,11 +37,15 @@ jobs:
           $version = (Select-String -Path pubspec.yaml -Pattern '^version:\s*(.+)$').Matches[0].Groups[1].Value.Trim()
           $src = "build/windows/x64/runner/Release"
           $dest = "build/windows/x64/runner/yisu-windows-$version"
+          $zip = "build/windows/x64/runner/yisu-windows-$version.zip"
           if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
+          if (Test-Path $zip) { Remove-Item -Force $zip }
           Copy-Item -Recurse -Force $src $dest
+          if (!(Test-Path "$dest/yisu.exe")) { throw "yisu.exe not found in bundle" }
+          Compress-Archive -Path $dest -DestinationPath $zip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: yisu-windows
-          path: build/windows/x64/runner/yisu-windows-*
+          path: build/windows/x64/runner/yisu-windows-*.zip
