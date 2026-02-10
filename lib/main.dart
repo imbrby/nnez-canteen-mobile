@@ -103,21 +103,34 @@ class CanteenApp extends StatelessWidget {
       seedColor: const Color(0xFF1F6F5B),
       brightness: Brightness.light,
     );
+    final isWindowsDesktop =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+    const windowsFontFamily = 'Microsoft YaHei UI';
+    const windowsFontFallback = <String>[
+      'Microsoft YaHei',
+      'Segoe UI',
+      'PingFang SC',
+      'Noto Sans CJK SC',
+      'sans-serif',
+    ];
+    final appTheme = ThemeData(
+      useMaterial3: true,
+      colorScheme: colorScheme,
+      scaffoldBackgroundColor: const Color(0xFFF5F0E6),
+      appBarTheme: AppBarTheme(
+        backgroundColor: colorScheme.surface,
+        foregroundColor: colorScheme.onSurface,
+        elevation: 0,
+      ),
+      cardTheme: const CardThemeData(margin: EdgeInsets.zero),
+      fontFamily: isWindowsDesktop ? windowsFontFamily : null,
+      fontFamilyFallback: isWindowsDesktop ? windowsFontFallback : null,
+    );
 
     return MaterialApp(
       title: '一粟',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: colorScheme,
-        scaffoldBackgroundColor: const Color(0xFFF5F0E6),
-        appBarTheme: AppBarTheme(
-          backgroundColor: colorScheme.surface,
-          foregroundColor: colorScheme.onSurface,
-          elevation: 0,
-        ),
-        cardTheme: const CardThemeData(margin: EdgeInsets.zero),
-      ),
+      theme: appTheme,
       home: const AppShell(),
     );
   }
