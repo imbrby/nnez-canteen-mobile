@@ -530,6 +530,8 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    final isWindowsDesktop =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
     if (_repository == null) {
       return Scaffold(
         body: SafeArea(
@@ -633,27 +635,73 @@ class _AppShellState extends State<AppShell> {
     );
 
     final hasCredential = _repository?.hasCredential ?? false;
+    final scaffoldBody = isWindowsDesktop
+        ? Row(
+            children: <Widget>[
+              SafeArea(
+                child: NavigationRail(
+                  selectedIndex: _tabIndex,
+                  onDestinationSelected: (index) {
+                    setState(() {
+                      _tabIndex = index;
+                    });
+                  },
+                  labelType: NavigationRailLabelType.all,
+                  destinations: const <NavigationRailDestination>[
+                    NavigationRailDestination(
+                      icon: Icon(Icons.home_outlined),
+                      selectedIcon: Icon(Icons.home),
+                      label: Text('首页'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.receipt_long_outlined),
+                      selectedIcon: Icon(Icons.receipt_long),
+                      label: Text('细目'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.settings_outlined),
+                      selectedIcon: Icon(Icons.settings),
+                      label: Text('设置'),
+                    ),
+                  ],
+                ),
+              ),
+              const VerticalDivider(width: 1),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 980),
+                    child: body,
+                  ),
+                ),
+              ),
+            ],
+          )
+        : body;
 
     return Stack(
       children: <Widget>[
         Scaffold(
-          body: body,
-          bottomNavigationBar: NavigationBar(
-            selectedIndex: _tabIndex,
-            onDestinationSelected: (index) {
-              setState(() {
-                _tabIndex = index;
-              });
-            },
-            destinations: const <NavigationDestination>[
-              NavigationDestination(icon: Icon(Icons.home), label: '首页'),
-              NavigationDestination(
-                icon: Icon(Icons.receipt_long_outlined),
-                label: '细目',
-              ),
-              NavigationDestination(icon: Icon(Icons.settings), label: '设置'),
-            ],
-          ),
+          body: scaffoldBody,
+          bottomNavigationBar: isWindowsDesktop
+              ? null
+              : NavigationBar(
+                  selectedIndex: _tabIndex,
+                  onDestinationSelected: (index) {
+                    setState(() {
+                      _tabIndex = index;
+                    });
+                  },
+                  destinations: const <NavigationDestination>[
+                    NavigationDestination(icon: Icon(Icons.home), label: '首页'),
+                    NavigationDestination(
+                      icon: Icon(Icons.receipt_long_outlined),
+                      label: '细目',
+                    ),
+                    NavigationDestination(icon: Icon(Icons.settings), label: '设置'),
+                  ],
+                ),
           floatingActionButton: hasCredential && _tabIndex == 0
               ? _status.isNotEmpty && !_syncing
                     ? FloatingActionButton.extended(
