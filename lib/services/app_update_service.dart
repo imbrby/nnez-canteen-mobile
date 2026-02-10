@@ -284,7 +284,7 @@ class AppUpdateService {
                         channel: UpdateDownloadChannel.github,
                       );
                     },
-                    child: const Text('GitHub更新'),
+                    child: const Text('GitHub'),
                   ),
                 ),
               ],
