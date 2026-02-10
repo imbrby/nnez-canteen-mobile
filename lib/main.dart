@@ -124,6 +124,7 @@ class _AppShellState extends State<AppShell> {
   bool _syncing = false;
   bool _settingUp = false;
   Timer? _statusClearTimer;
+  Timer? _autoSyncTimer;
   int _tabIndex = 0;
   final Map<String, List<TransactionRecord>> _transactionsByMonth = {};
   final Map<String, List<RechargeRecord>> _rechargesByMonth = {};
@@ -135,6 +136,7 @@ class _AppShellState extends State<AppShell> {
   void initState() {
     super.initState();
     _logInfo('AppShell initState');
+    _startAutoSyncTimer();
     _bootstrap();
   }
 
@@ -143,6 +145,7 @@ class _AppShellState extends State<AppShell> {
     _sidController.dispose();
     _passwordController.dispose();
     _statusClearTimer?.cancel();
+    _autoSyncTimer?.cancel();
     _repository?.close();
     super.dispose();
   }
@@ -191,6 +194,14 @@ class _AppShellState extends State<AppShell> {
         _status = 'bootstrap 失败：${_formatError(error)}';
       });
     }
+  }
+
+  void _startAutoSyncTimer() {
+    _autoSyncTimer?.cancel();
+    _autoSyncTimer = Timer.periodic(const Duration(hours: 3), (_) {
+      _logInfo('触发3小时自动刷新定时任务');
+      _syncNow();
+    });
   }
 
   Future<void> _syncNow() async {

@@ -186,7 +186,14 @@ Future<_IsolateResult> _fetchAllInIsolate(_FetchAllParams params) async {
     final rechargeRecords = <RechargeRecord>[];
     for (final item in rechargeRaw) {
       try {
-        rechargeRecords.add(RechargeRecord.fromRemote(item));
+        final recharge = RechargeRecord.fromRemote(item);
+        if (!_isSuccessfulRechargeStatus(recharge.status)) {
+          logInfo(
+            'skip recharge with status="${recharge.status}" order=${recharge.orderId}',
+          );
+          continue;
+        }
+        rechargeRecords.add(recharge);
       } catch (e) {
         logInfo('skip invalid recharge: $e');
       }
@@ -404,6 +411,11 @@ Future<CampusProfile> _fetchProfile(
   }
   logInfo('fetchProfile done');
   return CampusProfile.fromRemote(data);
+}
+
+bool _isSuccessfulRechargeStatus(String status) {
+  final normalized = status.replaceAll(RegExp(r'\s+'), '');
+  return normalized == '支付成功';
 }
 
 Map<String, dynamic> _decodeJson(String? raw) {

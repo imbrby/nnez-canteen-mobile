@@ -222,33 +222,36 @@ class _DetailPageState extends State<DetailPage> {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    SegmentedButton<_DetailMode>(
-                      segments: const <ButtonSegment<_DetailMode>>[
-                        ButtonSegment<_DetailMode>(
-                          value: _DetailMode.month,
-                          icon: Icon(Icons.calendar_view_month_outlined),
-                          label: Text('月份'),
-                        ),
-                        ButtonSegment<_DetailMode>(
-                          value: _DetailMode.day,
-                          icon: Icon(Icons.today_outlined),
-                          label: Text('单日'),
-                        ),
-                      ],
-                      selected: <_DetailMode>{_mode},
-                      onSelectionChanged: (selection) {
-                        final selected = selection.first;
-                        setState(() {
-                          _mode = selected;
-                          if (_mode == _DetailMode.day &&
-                              _selectedDay.substring(0, 7) != _selectedMonth) {
-                            _selectedDay = _clampDayToMonth(
-                              _selectedMonth,
-                              _selectedDay,
-                            );
-                          }
-                        });
-                      },
+                    Center(
+                      child: SegmentedButton<_DetailMode>(
+                        segments: const <ButtonSegment<_DetailMode>>[
+                          ButtonSegment<_DetailMode>(
+                            value: _DetailMode.month,
+                            icon: Icon(Icons.calendar_view_month_outlined),
+                            label: Text('月份'),
+                          ),
+                          ButtonSegment<_DetailMode>(
+                            value: _DetailMode.day,
+                            icon: Icon(Icons.today_outlined),
+                            label: Text('单日'),
+                          ),
+                        ],
+                        selected: <_DetailMode>{_mode},
+                        onSelectionChanged: (selection) {
+                          final selected = selection.first;
+                          setState(() {
+                            _mode = selected;
+                            if (_mode == _DetailMode.day &&
+                                _selectedDay.substring(0, 7) !=
+                                    _selectedMonth) {
+                              _selectedDay = _clampDayToMonth(
+                                _selectedMonth,
+                                _selectedDay,
+                              );
+                            }
+                          });
+                        },
+                      ),
                     ),
                     const SizedBox(height: 10),
                     Row(
@@ -282,21 +285,23 @@ class _DetailPageState extends State<DetailPage> {
                 ),
               ),
             ),
-            const SizedBox(height: 16),
-            Card(
-              elevation: 0,
-              color: colorScheme.surfaceContainerHighest,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: _DetailCalendar(
-                  selectedMonth: _selectedMonth,
-                  selectedDay: _selectedDay,
-                  dailyTotals: dailyTotals,
-                  dailyCounts: dailyCounts,
-                  onDaySelected: _selectDayFromCalendar,
+            if (_mode == _DetailMode.day) ...[
+              const SizedBox(height: 16),
+              Card(
+                elevation: 0,
+                color: colorScheme.surfaceContainerHighest,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: _DetailCalendar(
+                    selectedMonth: _selectedMonth,
+                    selectedDay: _selectedDay,
+                    dailyTotals: dailyTotals,
+                    dailyCounts: dailyCounts,
+                    onDaySelected: _selectDayFromCalendar,
+                  ),
                 ),
               ),
-            ),
+            ],
             const SizedBox(height: 16),
             Card(
               elevation: 0,

@@ -187,8 +187,8 @@ class LocalDatabaseService {
     _logInfo('queryRecentRecharges start sid=$sid limit=$limit');
     final rows = await db.query(
       'recharges',
-      where: 'sid = ?',
-      whereArgs: <Object?>[sid],
+      where: 'sid = ? AND status = ?',
+      whereArgs: <Object?>[sid, '支付成功'],
       orderBy: 'occurred_at DESC, order_id DESC',
       limit: limit,
     );
@@ -204,8 +204,8 @@ class LocalDatabaseService {
     _logInfo('queryRechargesByDayRange start sid=$sid $startDate~$endDate');
     final rows = await db.query(
       'recharges',
-      where: 'sid = ? AND occurred_day BETWEEN ? AND ?',
-      whereArgs: <Object?>[sid, startDate, endDate],
+      where: 'sid = ? AND status = ? AND occurred_day BETWEEN ? AND ?',
+      whereArgs: <Object?>[sid, '支付成功', startDate, endDate],
       orderBy: 'occurred_at ASC, order_id ASC',
     );
     _logInfo('queryRechargesByDayRange done sid=$sid rows=${rows.length}');
