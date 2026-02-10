@@ -25,8 +25,8 @@ constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
 constexpr const wchar_t kGetPreferredBrightnessRegKey[] =
   L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize";
 constexpr const wchar_t kGetPreferredBrightnessRegValue[] = L"AppsUseLightTheme";
-constexpr int kMinWindowWidth = 1000;
-constexpr int kMinWindowHeight = 700;
+constexpr int kMinWindowWidth = 480;
+constexpr int kMinWindowHeight = 480;
 
 // The number of Win32Window objects that currently exist.
 static int g_active_window_count = 0;

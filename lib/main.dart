@@ -105,9 +105,9 @@ class CanteenApp extends StatelessWidget {
     );
     final isWindowsDesktop =
         !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
-    const windowsFontFamily = 'Microsoft YaHei UI';
+    const windowsFontFamily = 'Microsoft YaHei';
     const windowsFontFallback = <String>[
-      'Microsoft YaHei',
+      'Microsoft YaHei UI',
       'Segoe UI',
       'PingFang SC',
       'Noto Sans CJK SC',
@@ -647,38 +647,37 @@ class _AppShellState extends State<AppShell> {
                     });
                   },
                   groupAlignment: 0,
-                  minWidth: 96,
                   labelType: NavigationRailLabelType.all,
                   destinations: const <NavigationRailDestination>[
                     NavigationRailDestination(
                       icon: Padding(
-                        padding: EdgeInsets.symmetric(vertical: 4),
+                        padding: EdgeInsets.symmetric(vertical: 12),
                         child: Icon(Icons.home_outlined),
                       ),
                       selectedIcon: Padding(
-                        padding: EdgeInsets.symmetric(vertical: 4),
+                        padding: EdgeInsets.symmetric(vertical: 12),
                         child: Icon(Icons.home),
                       ),
                       label: Text('首页'),
                     ),
                     NavigationRailDestination(
                       icon: Padding(
-                        padding: EdgeInsets.symmetric(vertical: 4),
+                        padding: EdgeInsets.symmetric(vertical: 12),
                         child: Icon(Icons.receipt_long_outlined),
                       ),
                       selectedIcon: Padding(
-                        padding: EdgeInsets.symmetric(vertical: 4),
+                        padding: EdgeInsets.symmetric(vertical: 12),
                         child: Icon(Icons.receipt_long),
                       ),
                       label: Text('细目'),
                     ),
                     NavigationRailDestination(
                       icon: Padding(
-                        padding: EdgeInsets.symmetric(vertical: 4),
+                        padding: EdgeInsets.symmetric(vertical: 12),
                         child: Icon(Icons.settings_outlined),
                       ),
                       selectedIcon: Padding(
-                        padding: EdgeInsets.symmetric(vertical: 4),
+                        padding: EdgeInsets.symmetric(vertical: 12),
                         child: Icon(Icons.settings),
                       ),
                       label: Text('设置'),
