@@ -6,6 +6,7 @@ import 'package:mobile_app/models/campus_profile.dart';
 import 'package:mobile_app/models/monthly_summary.dart';
 import 'package:mobile_app/models/recharge_record.dart';
 import 'package:mobile_app/models/transaction_record.dart';
+import 'package:mobile_app/pages/detail_page.dart';
 import 'package:mobile_app/pages/home_page.dart';
 import 'package:mobile_app/pages/settings_page.dart';
 import 'package:mobile_app/services/app_log_service.dart';
@@ -18,7 +19,8 @@ import 'package:workmanager/workmanager.dart';
 @pragma('vm:entry-point')
 void _workmanagerCallbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
-    if (task == backgroundSyncTaskName || task == Workmanager.iOSBackgroundTask) {
+    if (task == backgroundSyncTaskName ||
+        task == Workmanager.iOSBackgroundTask) {
       return await backgroundSyncCallback();
     }
     return true;
@@ -124,6 +126,7 @@ class _AppShellState extends State<AppShell> {
   Timer? _statusClearTimer;
   int _tabIndex = 0;
   final Map<String, List<TransactionRecord>> _transactionsByMonth = {};
+  final Map<String, List<RechargeRecord>> _rechargesByMonth = {};
   List<RechargeRecord> _recentRecharges = [];
   int? _estimatedDays;
   late String _selectedMonth = _currentMonthKey();
@@ -160,6 +163,10 @@ class _AppShellState extends State<AppShell> {
       final saved = await repo.loadTransactions();
       if (saved.isNotEmpty) {
         _transactionsByMonth.addAll(saved);
+      }
+      final savedRecharges = await repo.loadRecharges();
+      if (savedRecharges.isNotEmpty) {
+        _rechargesByMonth.addAll(savedRecharges);
       }
       // Load recent recharges
       _recentRecharges = await repo.loadRecentRecharges();
@@ -209,16 +216,16 @@ class _AppShellState extends State<AppShell> {
       _transactionsByMonth.clear();
       final fresh = await repo.loadTransactions();
       _transactionsByMonth.addAll(fresh);
+      _rechargesByMonth.clear();
+      final freshRecharges = await repo.loadRecharges();
+      _rechargesByMonth.addAll(freshRecharges);
       _selectedMonth = _currentMonthKey();
       // Load recent recharges
       _recentRecharges = await repo.loadRecentRecharges();
       // Calculate estimated days
       _estimatedDays = _calcEstimatedDays(repo.balance, fresh);
       // Update home screen widget
-      WidgetService.updateWidget(
-        balance: repo.balance ?? 0,
-        estimatedDays: _estimatedDays,
-      );
+      WidgetService.updateWidget(balance: repo.balance ?? 0);
       setState(() {
         _status = '刷新成功';
       });
@@ -316,6 +323,7 @@ class _AppShellState extends State<AppShell> {
         _status = '已登出';
         _tabIndex = 0;
         _transactionsByMonth.clear();
+        _rechargesByMonth.clear();
         _recentRecharges = [];
         _estimatedDays = null;
       });
@@ -335,9 +343,12 @@ class _AppShellState extends State<AppShell> {
     setState(() => _status = '正在导出...');
     try {
       final json = await repo.exportToJson();
-      await DataTransferService.exportAndShare(json, repo.currentSid);
+      final savedPath = await DataTransferService.exportWithSystemFileManager(
+        json,
+        repo.currentSid,
+      );
       if (!mounted) return;
-      setState(() => _status = '导出完成');
+      setState(() => _status = savedPath == null ? '已取消导出' : '导出完成');
       _statusClearTimer?.cancel();
       _statusClearTimer = Timer(const Duration(seconds: 3), () {
         if (mounted) setState(() => _status = '');
@@ -363,6 +374,9 @@ class _AppShellState extends State<AppShell> {
       _transactionsByMonth.clear();
       final fresh = await repo.loadTransactions();
       _transactionsByMonth.addAll(fresh);
+      _rechargesByMonth.clear();
+      final freshRecharges = await repo.loadRecharges();
+      _rechargesByMonth.addAll(freshRecharges);
       _profile = repo.profile;
       _recentRecharges = await repo.loadRecentRecharges();
       _estimatedDays = _calcEstimatedDays(repo.balance, fresh);
@@ -407,8 +421,7 @@ class _AppShellState extends State<AppShell> {
           (dailyTotals[txn.occurredDay] ?? 0) + txn.amount.abs();
     }
     if (dailyTotals.isEmpty) return null;
-    final totalSpent =
-        dailyTotals.values.fold<double>(0, (a, b) => a + b);
+    final totalSpent = dailyTotals.values.fold<double>(0, (a, b) => a + b);
     final avgPerActiveDay = totalSpent / dailyTotals.length;
     if (avgPerActiveDay <= 0) return null;
     return (balance / avgPerActiveDay).floor();
@@ -489,8 +502,7 @@ class _AppShellState extends State<AppShell> {
     for (final txn in selectedTransactions) {
       dailyTotals[txn.occurredDay] =
           (dailyTotals[txn.occurredDay] ?? 0.0) + txn.amount.abs();
-      dailyCounts[txn.occurredDay] =
-          (dailyCounts[txn.occurredDay] ?? 0) + 1;
+      dailyCounts[txn.occurredDay] = (dailyCounts[txn.occurredDay] ?? 0) + 1;
     }
     MonthlySummary? monthlySummary;
     if (selectedTransactions.isNotEmpty) {
@@ -520,8 +532,9 @@ class _AppShellState extends State<AppShell> {
     }
 
     // 最近20条消费记录
-    final allTransactions = _transactionsByMonth.values.expand((list) => list).toList()
-      ..sort((a, b) => b.occurredAt.compareTo(a.occurredAt));
+    final allTransactions =
+        _transactionsByMonth.values.expand((list) => list).toList()
+          ..sort((a, b) => b.occurredAt.compareTo(a.occurredAt));
     final recentTransactions = allTransactions.take(20).toList();
 
     final body = IndexedStack(
@@ -540,6 +553,11 @@ class _AppShellState extends State<AppShell> {
           canGoNext: _selectedMonth.compareTo(_currentMonthKey()) < 0,
           onPrevMonth: () => _switchMonth(-1),
           onNextMonth: () => _switchMonth(1),
+        ),
+        DetailPage(
+          balance: _repository?.balance,
+          transactionsByMonth: _transactionsByMonth,
+          rechargesByMonth: _rechargesByMonth,
         ),
         SettingsPage(
           profile: _profile,
@@ -568,26 +586,32 @@ class _AppShellState extends State<AppShell> {
             },
             destinations: const <NavigationDestination>[
               NavigationDestination(icon: Icon(Icons.home), label: '首页'),
+              NavigationDestination(
+                icon: Icon(Icons.receipt_long_outlined),
+                label: '细目',
+              ),
               NavigationDestination(icon: Icon(Icons.settings), label: '设置'),
             ],
           ),
           floatingActionButton: hasCredential && _tabIndex == 0
               ? _status.isNotEmpty && !_syncing
-                  ? FloatingActionButton.extended(
-                      onPressed: _settingUp ? null : _syncNow,
-                      icon: const Icon(Icons.check),
-                      label: Text(_status),
-                    )
-                  : FloatingActionButton(
-                      onPressed: _syncing || _settingUp ? null : _syncNow,
-                      child: _syncing
-                          ? const SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.refresh),
-                    )
+                    ? FloatingActionButton.extended(
+                        onPressed: _settingUp ? null : _syncNow,
+                        icon: const Icon(Icons.check),
+                        label: Text(_status),
+                      )
+                    : FloatingActionButton(
+                        onPressed: _syncing || _settingUp ? null : _syncNow,
+                        child: _syncing
+                            ? const SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.refresh),
+                      )
               : null,
         ),
         if (!hasCredential)

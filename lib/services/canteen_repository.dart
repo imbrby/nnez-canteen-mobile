@@ -67,10 +67,7 @@ class CanteenRepository {
     );
     _volatileProfile = placeholder;
     await _storage.saveProfile(placeholder);
-    await _storage.saveSyncMeta(
-      balance: 0,
-      balanceUpdatedAt: '',
-    );
+    await _storage.saveSyncMeta(balance: 0, balanceUpdatedAt: '');
     _volatileBalance = 0;
     _volatileBalanceUpdatedAt = '';
   }
@@ -94,8 +91,10 @@ class CanteenRepository {
         .fetchAll(
           sid: sid,
           plainPassword: password,
-          startDate: '${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}',
-          endDate: '${endDate.year}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}',
+          startDate:
+              '${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}',
+          endDate:
+              '${endDate.year}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}',
           includeTransactions: true,
           onProgress: onProgress,
         )
@@ -105,7 +104,9 @@ class CanteenRepository {
             throw TimeoutException('同步接口超时，请稍后重试。');
           },
         );
-    _logInfo('sync.fetchAll ok, got ${payload.transactions.length} transactions');
+    _logInfo(
+      'sync.fetchAll ok, got ${payload.transactions.length} transactions',
+    );
 
     _volatileProfile = payload.profile;
     _volatileBalance = payload.balance;
@@ -122,7 +123,9 @@ class CanteenRepository {
     await _db.upsertTransactions(sid, stamped);
 
     // Save recharges to SQLite with sid
-    final stampedRecharges = payload.recharges.map((r) => r.withSid(sid)).toList();
+    final stampedRecharges = payload.recharges
+        .map((r) => r.withSid(sid))
+        .toList();
     await _db.upsertRecharges(sid, stampedRecharges);
 
     _logInfo('syncNow done');
@@ -225,6 +228,25 @@ class CanteenRepository {
     final sid = currentSid;
     if (sid.isEmpty) return [];
     return _db.queryRecentRecharges(sid: sid, limit: limit);
+  }
+
+  Future<Map<String, List<RechargeRecord>>> loadRecharges() async {
+    final sid = currentSid;
+    if (sid.isEmpty) return {};
+    final rows = await _db.queryRechargesByDayRange(
+      sid: sid,
+      startDate: '2000-01-01',
+      endDate: '2099-12-31',
+    );
+    final byMonth = <String, List<RechargeRecord>>{};
+    for (final recharge in rows) {
+      if (recharge.occurredDay.length < 7) {
+        continue;
+      }
+      final key = recharge.occurredDay.substring(0, 7);
+      (byMonth[key] ??= []).add(recharge);
+    }
+    return byMonth;
   }
 
   Future<String> reportLoss() async {

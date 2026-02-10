@@ -4,21 +4,15 @@ import 'package:mobile_app/services/app_log_service.dart';
 class WidgetService {
   static const _androidWidgetName = 'CanteenWidgetProvider';
 
-  static Future<void> updateWidget({
-    required double balance,
-    required int? estimatedDays,
-  }) async {
+  static Future<void> updateWidget({required double balance}) async {
     try {
-      await HomeWidget.saveWidgetData('widget_balance', balance.toStringAsFixed(2));
       await HomeWidget.saveWidgetData(
-        'widget_estimated_days',
-        estimatedDays?.toString() ?? '--',
+        'widget_balance',
+        balance.toStringAsFixed(2),
       );
-      await HomeWidget.updateWidget(
-        androidName: _androidWidgetName,
-      );
+      await HomeWidget.updateWidget(androidName: _androidWidgetName);
       AppLogService.instance.info(
-        'widget updated: balance=$balance estimatedDays=$estimatedDays',
+        'widget updated: balance=$balance',
         tag: 'WIDGET',
       );
     } catch (e) {

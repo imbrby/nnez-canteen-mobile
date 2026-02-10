@@ -1,18 +1,25 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 
 class DataTransferService {
-  static Future<void> exportAndShare(String jsonContent, String sid) async {
-    final dir = await getTemporaryDirectory();
-    final fileName = 'yisu_backup_${sid}_${DateTime.now().millisecondsSinceEpoch}.json';
-    final file = File('${dir.path}/$fileName');
-    await file.writeAsString(jsonContent);
-    await Share.shareXFiles(
-      [XFile(file.path)],
-      subject: '一粟数据备份',
+  static Future<String?> exportWithSystemFileManager(
+    String jsonContent,
+    String sid,
+  ) async {
+    final now = DateTime.now();
+    final stamp =
+        '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
+    final fileName = 'yisu_backup_${sid}_$stamp.json';
+    final bytes = Uint8List.fromList(utf8.encode(jsonContent));
+    return FilePicker.platform.saveFile(
+      dialogTitle: '保存导出数据',
+      fileName: fileName,
+      type: FileType.custom,
+      allowedExtensions: <String>['json'],
+      bytes: bytes,
     );
   }
 

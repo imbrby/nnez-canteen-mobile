@@ -1,4 +1,3 @@
-
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:mobile_app/services/app_log_service.dart';
@@ -194,6 +193,22 @@ class LocalDatabaseService {
       limit: limit,
     );
     _logInfo('queryRecentRecharges done sid=$sid rows=${rows.length}');
+    return rows.map(RechargeRecord.fromDbMap).toList();
+  }
+
+  Future<List<RechargeRecord>> queryRechargesByDayRange({
+    required String sid,
+    required String startDate,
+    required String endDate,
+  }) async {
+    _logInfo('queryRechargesByDayRange start sid=$sid $startDate~$endDate');
+    final rows = await db.query(
+      'recharges',
+      where: 'sid = ? AND occurred_day BETWEEN ? AND ?',
+      whereArgs: <Object?>[sid, startDate, endDate],
+      orderBy: 'occurred_at ASC, order_id ASC',
+    );
+    _logInfo('queryRechargesByDayRange done sid=$sid rows=${rows.length}');
     return rows.map(RechargeRecord.fromDbMap).toList();
   }
 

@@ -135,14 +135,11 @@ Future<_IsolateResult> _fetchAllInIsolate(_FetchAllParams params) async {
       logInfo('transactions fetched rows=${transactions.length}');
     }
 
-    final balance =
-        await _fetchBalance(client, session, params.sid, logInfo);
+    final balance = await _fetchBalance(client, session, params.sid, logInfo);
     logInfo('balance fetched value=${balance.toStringAsFixed(2)}');
 
     final profile = await _fetchProfile(client, session, logInfo);
-    logInfo(
-      'profile fetched sid=${profile.sid} name=${profile.studentName}',
-    );
+    logInfo('profile fetched sid=${profile.sid} name=${profile.studentName}');
 
     // Fetch recharges
     List<Map<String, dynamic>> rechargeRaw = <Map<String, dynamic>>[];
@@ -425,24 +422,47 @@ bool _isSuccess(Map<String, dynamic> payload) {
 }
 
 String _extractMessage(Map<String, dynamic> payload) {
-  return (payload['msg'] ??
-          payload['message'] ??
-          payload['errmsg'] ??
-          payload['error'] ??
-          payload['info'] ??
-          '未知错误')
-      .toString();
+  final directCandidates = <Object?>[
+    payload['msg'],
+    payload['message'],
+    payload['errmsg'],
+    payload['error'],
+    payload['info'],
+    payload['data'],
+  ];
+  for (final value in directCandidates) {
+    if (value == null) continue;
+    if (value is String && value.trim().isNotEmpty) {
+      return value.trim();
+    }
+    if (value is Map) {
+      final nested = Map<String, dynamic>.from(value);
+      for (final nestedKey in const <String>[
+        'msg',
+        'message',
+        'errmsg',
+        'error',
+        'info',
+      ]) {
+        final nestedValue = nested[nestedKey];
+        if (nestedValue is String && nestedValue.trim().isNotEmpty) {
+          return nestedValue.trim();
+        }
+      }
+    }
+    final text = value.toString().trim();
+    if (text.isNotEmpty && text != 'null' && text != '{}') {
+      return text;
+    }
+  }
+  return '未知错误';
 }
 
 // ---------------------------------------------------------------------------
 // Card loss/unlock isolate entry points
 // ---------------------------------------------------------------------------
 
-typedef _CardOpParams = ({
-  String sid,
-  String plainPassword,
-  String method,
-});
+typedef _CardOpParams = ({String sid, String plainPassword, String method});
 
 class _CardOpResult {
   const _CardOpResult({required this.message, required this.logs});
@@ -483,7 +503,8 @@ Future<_CardOpResult> _cardOpInIsolate(_CardOpParams params) async {
       session: session,
       path: '/interface/getVerifyCode?${Random().nextDouble()}',
       refererPath: '/mobile/login',
-      accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+      accept:
+          'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
       readText: false,
       logInfo: logInfo,
     );
@@ -569,9 +590,7 @@ class CampusApiClient {
       includeTransactions: includeTransactions,
     );
     try {
-      final result = await Isolate.run(
-        () => _fetchAllInIsolate(params),
-      );
+      final result = await Isolate.run(() => _fetchAllInIsolate(params));
       for (final line in result.logs) {
         _logInfo(line);
       }
@@ -659,9 +678,7 @@ class _CampusSession {
     if (_cookies.isEmpty) return;
     headers.set(
       HttpHeaders.cookieHeader,
-      _cookies.entries
-          .map((e) => '${e.key}=${e.value}')
-          .join('; '),
+      _cookies.entries.map((e) => '${e.key}=${e.value}').join('; '),
     );
   }
 
